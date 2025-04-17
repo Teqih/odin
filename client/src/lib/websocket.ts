@@ -22,9 +22,13 @@ export function connectToGameServer(gameId: string, playerId: string): WebSocket
     socket.close();
   }
 
+  // Fix protocol to match server port (5000)
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const wsUrl = `${protocol}//${window.location.host}/ws`;
+  const host = window.location.hostname;
+  const port = "5000"; // Explicitly use port 5000 where the server is running
+  const wsUrl = `${protocol}//${host}:${port}/ws`;
   
+  console.log("Connecting to WebSocket at:", wsUrl);
   socket = new WebSocket(wsUrl);
   
   socket.onopen = () => {
@@ -69,6 +73,9 @@ export function connectToGameServer(gameId: string, playerId: string): WebSocket
   
   socket.onerror = (error) => {
     console.error("WebSocket error:", error);
+    // Provide more detailed error information for debugging
+    console.log("WebSocket state:", socket?.readyState);
+    console.log("Connection URL:", wsUrl);
   };
   
   return socket;
