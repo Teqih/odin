@@ -234,15 +234,25 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         }
       }
       
-      // Check if player needs to pick a card after playing
-      if (
-        gameState.lastAction.type === "play" && 
-        gameState.lastAction.playerId === playerId && 
-        gameState.previousPlay.length > 0 && 
-        !showPickCardModal
-      ) {
-        setCardsToPickFrom(gameState.previousPlay);
-        setShowPickCardModal(true);
+      // When cards are played successfully, clear the selected cards
+      if (gameState.lastAction.type === "play") {
+        setSelectedCards([]);
+        
+        // Check if the current player needs to pick a card
+        if (
+          gameState.lastAction.playerId === playerId && 
+          gameState.previousPlay.length > 0 && 
+          !showPickCardModal
+        ) {
+          setCardsToPickFrom(gameState.previousPlay);
+          setShowPickCardModal(true);
+        }
+      }
+      
+      // Close the pick card modal if the last action was picking a card
+      if (gameState.lastAction.type === "pick" && showPickCardModal) {
+        setShowPickCardModal(false);
+        setCardsToPickFrom([]);
       }
     }
   }, [gameState, playerId, navigate, toast, showRoundEndModal, showGameEndModal, showPickCardModal]);

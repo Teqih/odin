@@ -211,9 +211,9 @@ export class MemStorage implements IStorage {
     
     // Validate play according to game rules
     if (game.currentPlay.length > 0) {
-      // Must match count of cards from previous play
-      if (cards.length !== game.currentPlay.length) {
-        throw new Error("Must play the same number of cards as the previous play");
+      // Must match count of cards from previous play or play one more card (per official rules)
+      if (cards.length !== game.currentPlay.length && cards.length !== game.currentPlay.length + 1) {
+        throw new Error("Must play the same number of cards or one more than the previous play");
       }
       
       // Must be higher value or same value/color
