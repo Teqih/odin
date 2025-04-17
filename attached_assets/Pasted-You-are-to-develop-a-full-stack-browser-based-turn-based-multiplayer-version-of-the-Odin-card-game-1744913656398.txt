@@ -1,0 +1,47 @@
+You are to develop a full-stack, browser‑based, turn‑based multiplayer version of the Odin card game using Replit AI. Follow these specifications:
+
+1. Game Rules  
+   - Deck: 54 cards, 6 colors (suits), numbered 1–9.  
+   - Setup: 2–6 players, each dealt 9 cards.  
+   - Objective: Be first to empty your hand; lowest score wins after someone hits the point limit.  
+   - Play: Lead player plays one or more cards of same number or color. Other players must play the same count, higher value, matching suit or rank, or pass.  
+   - After any play, the active player picks up one card from the previous play and discards the rest.  
+   - Round ends when a player empties hand or all consecutively pass. Score 1 point per card in hand at round end.  
+   - Game ends when any player reaches the agreed scoring threshold (e.g., 15 points).
+
+2. Website Workflow  
+   - **Home/Lobby**: Display options “Create Game” and “Join Game.”  
+   - **Create Game**: Generates a unique room code; the host can copy/share it.  
+   - **Join Game**: Enter room code to join friend’s table; validate code and show lobby.  
+   - **Lobby**: List joined players; “Start Game” button enabled for host when ≥2 players.  
+   - **Game Room**:  
+     - Show each player’s hand (cards face‑down), score counters, and main play area.  
+     - Cards are HTML elements that can be dragged and dropped onto the play area.  
+     - Visual indicator for current player’s turn.  
+     - Real‑time sync via WebSocket or similar (Replit keep‑alive).  
+   - **In‑Game Flow**:  
+     - On drag‑and‑drop, validate play against rules, update game state server‑side.  
+     - If valid: move cards to discard pile, let active player choose one card to pick, broadcast updated hands.  
+     - If invalid: return cards to hand.  
+     - Pass option available via button.  
+     - Highlight next player and restrict input to them.
+
+3. Technical Requirements  
+   - **Front‑end**: HTML5, CSS3, JavaScript (or TypeScript).  
+     - Use a drag‑and‑drop library (e.g., interact.js or native HTML5 DnD).  
+     - Responsive layout for desktop and mobile.  
+   - **Back‑end**: Node.js (Express) or Python (Flask/FastAPI).  
+     - Game state stored in memory or lightweight database.  
+     - WebSocket implementation for real‑time updates.  
+     - REST endpoints for room creation/joining.  
+   - **State Management**:  
+     - Track deck, hands, discard pile, current play, scores, turn order.  
+     - Reset hands and deck for each new hand until game end.
+   - **Testing**: Write unit tests for rule validation and API endpoints.
+
+4. Deliverables  
+   - A ready‑to‑run Replit project with clear instructions in README.  
+   - Clean, commented code following best practices.  
+   - Deployment instructions for real‑time hosting.
+
+Begin by scaffolding the project structure and implementing the lobby (create/join) functionality. Then build the core game loop, UI drag‑and‑drop mechanics, and real‑time synchronization.
