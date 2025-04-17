@@ -352,8 +352,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   const showRules = () => {
     toast({
       title: "Game Rules",
-      description: "Play cards of same color or value. Play same number or one more card than previous play. Higher value beats previous play. Empty your hand to win!",
-      duration: 5000
+      description: "Play cards of same color or value. You can play the same number OR one more card than previous play. Higher value beats previous play. Empty your hand to win!",
+      duration: 7000
     });
   };
   
@@ -561,7 +561,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
               <p className="text-sm text-muted-foreground">
                 {isMyTurn 
                   ? gameState.currentPlay.length > 0 
-                    ? "Play same number or one more card of same/higher value" 
+                    ? `Play ${gameState.currentPlay.length} or ${gameState.currentPlay.length + 1} cards of same/higher value` 
                     : "Play any cards of same color or value" 
                   : "Waiting for other player to take their turn"}
               </p>
