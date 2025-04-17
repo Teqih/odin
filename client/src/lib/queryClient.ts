@@ -29,7 +29,16 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey[0] as string, {
+    // Construct URL with query parameters for player ID if present
+    let url = queryKey[0] as string;
+    if (queryKey.length > 1 && queryKey[1]) {
+      // Add playerId as a query parameter
+      const playerId = queryKey[1];
+      url = `${url}?playerId=${encodeURIComponent(playerId as string)}`;
+      console.log("Requesting with URL:", url);
+    }
+    
+    const res = await fetch(url, {
       credentials: "include",
     });
 
