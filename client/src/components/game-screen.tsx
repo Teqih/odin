@@ -278,7 +278,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     
     if (isSelected) {
       // Deselect the card
-      setSelectedCards(selectedCards.filter(c => c.id === card.id));
+      setSelectedCards(selectedCards.filter(c => c.id !== card.id));
     } else {
       // Check if the new card can be added to the selection
       const newSelection = [...selectedCards, card];
