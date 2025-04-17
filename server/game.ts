@@ -98,11 +98,11 @@ export function isValidPlay(
     return { valid: true };
   }
   
-  // Check if the number of cards matches the current play
-  if (cards.length !== currentPlay.length) {
+  // Check if the number of cards matches or is one more than the current play (per official rules)
+  if (cards.length !== currentPlay.length && cards.length !== currentPlay.length + 1) {
     return { 
       valid: false, 
-      reason: "You must play the same number of cards as the previous play" 
+      reason: "You must play the same number of cards or one more than the previous play" 
     };
   }
   

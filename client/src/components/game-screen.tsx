@@ -313,6 +313,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   
   const handlePickCard = (card: CardType) => {
     pickCardMutation.mutate(card.id);
+    setShowPickCardModal(false); // Close the modal after picking a card
   };
   
   const handleStartNewRound = () => {
@@ -341,7 +342,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   const showRules = () => {
     toast({
       title: "Game Rules",
-      description: "Play cards of same color or value. Higher value or matching color beats previous play. Empty your hand to win the round!",
+      description: "Play cards of same color or value. Play same number or one more card than previous play. Higher value beats previous play. Empty your hand to win!",
       duration: 5000
     });
   };
@@ -550,7 +551,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
               <p className="text-sm text-muted-foreground">
                 {isMyTurn 
                   ? gameState.currentPlay.length > 0 
-                    ? "Play same or higher value cards" 
+                    ? "Play same number or one more card of same/higher value" 
                     : "Play any cards of same color or value" 
                   : "Waiting for other player to take their turn"}
               </p>
