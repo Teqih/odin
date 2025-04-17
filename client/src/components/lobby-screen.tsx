@@ -32,7 +32,7 @@ const LobbyScreen: React.FC = () => {
   
   // Fetch game state
   const { data: gameState, isLoading, error } = useQuery({
-    queryKey: [`/api/games/${gameId}`, playerId],
+    queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`],
     enabled: !!gameId && !!playerId,
     refetchInterval: 5000,
     refetchIntervalInBackground: true
@@ -44,7 +44,7 @@ const LobbyScreen: React.FC = () => {
       await apiRequest("POST", `/api/games/${gameId}/start`, { playerId });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`] });
     },
     onError: (error) => {
       toast({
@@ -70,7 +70,7 @@ const LobbyScreen: React.FC = () => {
       if (message.type === "game_started" && message.gameId === gameId) {
         navigate(`/game/${gameId}`);
       } else if (message.type === "player_joined" && message.gameId === gameId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`] });
       }
     });
     

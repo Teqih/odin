@@ -60,7 +60,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   
   // Fetch game state
   const { data: gameState, isLoading, error } = useQuery({
-    queryKey: [`/api/games/${gameId}`, playerId],
+    queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`],
     enabled: !!gameId && !!playerId,
     refetchInterval: 2000,
     refetchIntervalInBackground: true
@@ -75,7 +75,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`] });
       setSelectedCards([]);
     },
     onError: (error) => {
@@ -96,7 +96,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`] });
       setShowPickCardModal(false);
     },
     onError: (error) => {
