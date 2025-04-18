@@ -9,13 +9,20 @@ import {
 } from "@/components/ui/toast"
 
 export function Toaster() {
-  const { toasts } = useToast()
+  const { toasts, dismiss } = useToast()
 
   return (
-    <ToastProvider>
+    <ToastProvider swipeDirection="right" duration={5000}>
       {toasts.map(function ({ id, title, description, action, ...props }) {
         return (
-          <Toast key={id} {...props}>
+          <Toast 
+            key={id} 
+            {...props}
+            onMouseDown={(e) => {
+              // Prevent clicks on the toast itself from closing it
+              e.stopPropagation();
+            }}
+          >
             <div className="grid gap-1">
               {title && <ToastTitle>{title}</ToastTitle>}
               {description && (
@@ -23,11 +30,11 @@ export function Toaster() {
               )}
             </div>
             {action}
-            <ToastClose />
+            <ToastClose onClick={() => dismiss(id)} />
           </Toast>
         )
       })}
-      <ToastViewport />
+      <ToastViewport onClick={() => dismiss()} />
     </ToastProvider>
   )
 }

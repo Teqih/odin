@@ -59,7 +59,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   
   // Fetch game state
-  const { data: gameState, isLoading, error } = useQuery({
+  const { data: gameStateData, isLoading, error } = useQuery<GameState>({
     queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`],
     enabled: !!gameId && !!playerId,
     refetchInterval: 2000,
@@ -131,7 +131,10 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       await apiRequest("POST", `/api/games/${gameId}/round`, { playerId });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}`] });
+      queryClient.invalidateQueries({ 
+        queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`],
+        refetchType: 'all'
+      });
       setShowRoundEndModal(false);
     },
     onError: (error) => {
@@ -156,7 +159,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     // Add message handler
     const removeHandler = addMessageHandler((message: WebSocketMessage) => {
       if (message.type === "turn_update" && message.gameId === gameId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`] });
       }
     });
     
@@ -182,11 +185,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   }, [gameId, playerId, navigate]);
   
   useEffect(() => {
-    if (gameState) {
-      // Process game state
-      const currentPlayer = gameState.players.find(p => p.id === playerId);
+    if (gameStateData) {
+      const currentPlayer = gameStateData.players.find((p: Player) => p.id === playerId);
       if (!currentPlayer) {
-        // Player not in game
         toast({
           title: "Error",
           description: "You are not a player in this game",
@@ -196,66 +197,60 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         return;
       }
       
-      // Check for round end
-      if (gameState.roundWinner && !showRoundEndModal && !showGameEndModal) {
-        const winnerPlayer = gameState.players.find(p => p.id === gameState.roundWinner);
+      if (gameStateData.roundWinner === null && showRoundEndModal) {
+        setShowRoundEndModal(false);
+      }
+      
+      if (gameStateData.roundWinner && !showRoundEndModal && !showGameEndModal) {
+        const winnerPlayer = gameStateData.players.find((p: Player) => p.id === gameStateData.roundWinner);
         if (winnerPlayer) {
           setRoundWinnerName(winnerPlayer.name);
-          
-          // Calculate round scores
-          const scores = gameState.players.map(p => ({
+          const scores = gameStateData.players.map((p: Player) => ({
             name: p.name + (p.id === playerId ? " (You)" : ""),
             score: p.score,
             cards: p.hand.length
           }));
           setRoundScores(scores);
-          
           setShowRoundEndModal(true);
         }
       }
       
-      // Check for game end
-      if (gameState.gameWinner && !showGameEndModal) {
-        const winnerPlayer = gameState.players.find(p => p.id === gameState.gameWinner);
+      if (gameStateData.gameWinner && !showGameEndModal) {
+        const winnerPlayer = gameStateData.players.find((p: Player) => p.id === gameStateData.gameWinner);
         if (winnerPlayer) {
           setGameWinnerName(winnerPlayer.name);
-          
-          // Sort players by score (ascending, lowest is best)
-          const scores = [...gameState.players]
-            .sort((a, b) => a.score - b.score)
-            .map(p => ({
+          const scores = [...gameStateData.players]
+            .sort((a: Player, b: Player) => a.score - b.score)
+            .map((p: Player) => ({
               name: p.name + (p.id === playerId ? " (You)" : ""),
               score: p.score
             }));
           setFinalScores(scores);
-          
           setShowRoundEndModal(false);
           setShowGameEndModal(true);
         }
       }
       
-      // When cards are played successfully, clear the selected cards
-      if (gameState.lastAction.type === "play") {
-        setSelectedCards([]);
-        
-        // Check if the current player needs to pick a card
+      if (gameStateData.lastAction.type === "play") {
+        if (gameStateData.lastAction.playerId === playerId) {
+          setSelectedCards([]);
+        }
         if (
-          gameState.lastAction.playerId === playerId && 
-          gameState.previousPlay.length > 0 && 
+          gameStateData.lastAction.playerId === playerId && 
+          gameStateData.previousPlay.length > 0 && 
           !showPickCardModal
         ) {
-          setCardsToPickFrom(gameState.previousPlay);
+          setCardsToPickFrom(gameStateData.previousPlay);
           setShowPickCardModal(true);
         }
       }
       
-      // Close the pick card modal if the last action was picking a card
-      if (gameState.lastAction.type === "pick" && showPickCardModal) {
+      if (gameStateData.lastAction.type === "pick" && showPickCardModal) {
         setShowPickCardModal(false);
         setCardsToPickFrom([]);
       }
     }
-  }, [gameState, playerId, navigate, toast, showRoundEndModal, showGameEndModal, showPickCardModal]);
+  }, [gameStateData, playerId, navigate, toast, showRoundEndModal, showGameEndModal, showPickCardModal]);
   
   // Handle drag and drop
   const handleDragOver = (e: DragEvent) => {
@@ -328,6 +323,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   
   const handleStartNewRound = () => {
     startNewRoundMutation.mutate();
+    setShowRoundEndModal(false);
   };
   
   const handleLeaveGame = () => {
@@ -357,6 +353,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     });
   };
   
+  // Handle loading state
   if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
@@ -368,7 +365,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     );
   }
   
-  if (error || !gameState) {
+  // Handle error or missing data state
+  if (error || !gameStateData) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
         <Card className="p-6 max-w-md">
@@ -376,7 +374,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
             <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
             <h2 className="text-xl font-semibold mb-2">Error Loading Game</h2>
             <p className="text-muted-foreground mb-4">
-              Unable to join the game. The game may no longer exist.
+              {error instanceof Error ? error.message : "Unable to join the game. The game may no longer exist."}
             </p>
             <Button onClick={() => navigate("/")}>
               Back to Home
@@ -387,32 +385,37 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     );
   }
   
-  // Get current player
-  const currentPlayer = gameState.players.find(p => p.id === playerId);
+  // --- Game Logic & Render --- 
+  // gameStateData is guaranteed to be valid GameState here
+  const gameState = gameStateData;
+  
+  // Get current player data AFTER ensuring gameState is valid
+  const currentPlayer = gameState.players.find((p: Player) => p.id === playerId);
+  
+  // Additional check: If currentPlayer is somehow not found despite being in the game, show an error.
+  // This satisfies the linter and handles edge cases.
   if (!currentPlayer) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-background">
-        <Card className="p-6 max-w-md">
-          <div className="text-center">
-            <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
-            <h2 className="text-xl font-semibold mb-2">Not a Player</h2>
-            <p className="text-muted-foreground mb-4">
-              You are not a player in this game.
-            </p>
-            <Button onClick={() => navigate("/")}>
-              Back to Home
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
+     return (
+       <div className="h-screen flex items-center justify-center bg-background">
+          <Card className="p-6 max-w-md">
+             <div className="text-center">
+               <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
+               <h2 className="text-xl font-semibold mb-2">Error</h2>
+               <p className="text-muted-foreground mb-4">Could not find your player data in the game.</p>
+               <Button onClick={() => navigate("/")}>Back to Home</Button>
+             </div>
+           </Card>
+         </div>
+     );
   }
   
-  // Get current turn player
+  // Define variables that depend on currentPlayer AFTER the check
+  const myHand = sortCards(currentPlayer.hand || []); // No optional chaining needed now
+  const isMyTurn = gameState.players[gameState.currentTurn]?.id === playerId;
+  const showPlayButton = selectedCards.length > 0 && isMyTurn;
+  const showPassButton = isMyTurn;
+  const currentPlayCards = gameState.currentPlay;
   const currentTurnPlayer = gameState.players[gameState.currentTurn];
-  const isMyTurn = currentTurnPlayer?.id === playerId;
-  
-  // Get opponents (everyone except current player)
   const opponents = gameState.players.filter(p => p.id !== playerId);
   
   return (
@@ -561,7 +564,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
               <p className="text-sm text-muted-foreground">
                 {isMyTurn 
                   ? gameState.currentPlay.length > 0 
-                    ? `Play ${gameState.currentPlay.length} or ${gameState.currentPlay.length + 1} cards of same/higher value` 
+                    ? `Play ${gameState.currentPlay.length} or ${gameState.currentPlay.length + 1} cards of higher value` 
                     : "Play any cards of same color or value" 
                   : "Waiting for other player to take their turn"}
               </p>
@@ -612,7 +615,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
           
           <div className="cards-container overflow-x-auto">
             <div className="flex gap-2 md:gap-3 pb-2 justify-center md:justify-start">
-              {sortCards(currentPlayer.hand).map(card => (
+              {myHand.map(card => (
                 <CardComponent 
                   key={card.id} 
                   card={card}
@@ -623,7 +626,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
                 />
               ))}
               
-              {currentPlayer.hand.length === 0 && (
+              {myHand.length === 0 && (
                 <div className="text-muted-foreground">
                   No cards in hand
                 </div>

@@ -30,6 +30,18 @@ export interface IStorage {
   getAllActiveGames(): Promise<GameState[]>;
 }
 
+// Helper function to calculate the numeric value of a play
+function calculatePlayValue(cards: Card[]): number {
+  if (!cards || cards.length === 0) {
+    return 0;
+  }
+  const valueString = cards
+    .map(c => c.value)
+    .sort((a, b) => b - a) // Sort descending
+    .join('');
+  return parseInt(valueString, 10);
+}
+
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private games: Map<string, GameState>;
@@ -202,53 +214,104 @@ export class MemStorage implements IStorage {
     
     const player = game.players[playerIndex];
     
+    // Check if cards array is empty
+    if (!cards || cards.length === 0) {
+        throw new Error("You must play at least one card.");
+    }
+
     // Check if all cards to be played are in player's hand
     for (const card of cards) {
       if (!player.hand.some(c => c.id === card.id)) {
         throw new Error("Card not in player's hand");
       }
     }
-    
-    // Validate play according to game rules
-    if (game.currentPlay.length > 0) {
-      // Must match count of cards from previous play or play one more card (per official rules)
-      if (cards.length !== game.currentPlay.length && cards.length !== game.currentPlay.length + 1) {
-        throw new Error("Must play the same number of cards or one more than the previous play");
-      }
-      
-      // Must be higher value or same value/color
-      const prevValue = game.currentPlay[0].value;
-      const prevColor = game.currentPlay[0].color;
-      const newValue = cards[0].value;
-      const newColor = cards[0].color;
-      
-      // Check if all cards in the play have the same value or color
-      const allSameValue = cards.every(c => c.value === newValue);
-      const allSameColor = cards.every(c => c.color === newColor);
-      
-      if (!allSameValue && !allSameColor) {
-        throw new Error("All cards in play must be the same value or color");
-      }
-      
-      if (allSameValue && newValue <= prevValue && newColor !== prevColor) {
-        throw new Error("Must play higher value cards or match the previous color");
-      }
-    } else {
-      // First play of the round
-      // Check if all cards in the play have the same value or color
-      const value = cards[0].value;
-      const color = cards[0].color;
-      
-      if (!cards.every(c => c.value === value) && !cards.every(c => c.color === color)) {
-        throw new Error("All cards in play must be the same value or color");
-      }
+
+    // Check if the played cards themselves are valid (all same value or all same color)
+    const firstCard = cards[0];
+    const playedValue = firstCard.value;
+    const playedColor = firstCard.color;
+    const allSameValue = cards.every(c => c.value === playedValue);
+    const allSameColor = cards.every(c => c.color === playedColor);
+
+    if (!allSameValue && !allSameColor) {
+      throw new Error("All cards played must be the same value or the same color");
     }
     
-    // Move cards from hand to play area
-    game.previousPlay = [...game.currentPlay];
-    game.currentPlay = [...cards];
-    player.hand = player.hand.filter(c => !cards.some(card => card.id === c.id));
+    // === START VALIDATION ===
+
+    // Rule: First play of the round must be exactly one card
+    if (game.currentPlay.length === 0 && cards.length !== 1) {
+      throw new Error("Must play exactly one card on the first turn of the round.");
+    }
+
+    // Validate subsequent plays against the current play
+    if (game.currentPlay.length > 0) {
+      // Rule: Must play the exact same number OR one more card than the current play
+      if (cards.length !== game.currentPlay.length && cards.length !== game.currentPlay.length + 1) {
+        throw new Error(`Must play ${game.currentPlay.length} or ${game.currentPlay.length + 1} card(s)`);
+      }
+      
+      const currentPlayCards = game.currentPlay;
+      const firstCurrentCard = currentPlayCards[0];
+      const currentIsSameValue = currentPlayCards.every(c => c.value === firstCurrentCard.value);
+      const currentIsSameColor = currentPlayCards.every(c => c.color === firstCurrentCard.color);
+
+      // CORRECTION: Les cartes jouées doivent être cohérentes (même valeur OU même couleur) entre elles
+      // mais n'ont pas besoin de correspondre au type du jeu précédent
+      if (!allSameValue && !allSameColor) {
+        throw new Error("All cards played must be the same value or the same color");
+      }
+
+      // SUPPRESSION: On retire les vérifications qui exigent que le type de jeu soit préservé
+      // La règle n'exige pas que si l'adversaire a joué des cartes de même valeur, je doive aussi jouer des cartes de même valeur
+      // Ce qui compte c'est que:
+      // 1. Mes cartes soient cohérentes entre elles (allSameValue ou allSameColor)
+      // 2. SOIT le premier joueur a joué de la couleur X et je joue aussi de la couleur X
+      // 3. SOIT le premier joueur a joué de la valeur Y et je joue aussi de la valeur Y
+      // 4. SOIT je joue une combinaison qui a une valeur supérieure
+
+      // Rule: Played cards must match the value OR color of the current play OR have a higher value
+      let matchesValue = false;
+      let matchesColor = false;
+      
+      // Si toutes mes cartes ont la même valeur et au moins une carte du jeu précédent a cette valeur
+      if (allSameValue) {
+        matchesValue = currentPlayCards.some(c => c.value === playedValue);
+      }
+      
+      // Si toutes mes cartes ont la même couleur et au moins une carte du jeu précédent a cette couleur
+      if (allSameColor) {
+        matchesColor = currentPlayCards.some(c => c.color === playedColor);
+      }
+
+      // Calculer les valeurs combinées pour la comparaison
+      const currentPlayValue = calculatePlayValue(currentPlayCards);
+      const playedCombinedValue = calculatePlayValue(cards);
+
+      // La règle principale: 
+      // Si mes cartes correspondent par couleur ou valeur, ou si la valeur combinée est supérieure
+      if (!matchesValue && !matchesColor && playedCombinedValue <= currentPlayValue) {
+        throw new Error(`Your play value (${playedCombinedValue}) must be higher than the current play value (${currentPlayValue}) or match color/value`);
+      }
+
+      // Si les cartes correspondent par couleur ou valeur, elles doivent avoir une valeur strictement supérieure
+      if ((matchesValue || matchesColor) && playedCombinedValue <= currentPlayValue) {
+        throw new Error(`Even when matching color/value, your play value (${playedCombinedValue}) must be higher than the current play value (${currentPlayValue})`);
+      }
+    } 
+    // === END VALIDATION ===
     
+    // Sort the played cards by value descending BEFORE storing them
+    const sortedPlayedCards = [...cards].sort((a, b) => b.value - a.value);
+
+    // Move cards from hand to play area
+    game.previousPlay = [...game.currentPlay]; // Keep previous play for potential pick
+    game.currentPlay = sortedPlayedCards; // Store sorted cards
+    player.hand = player.hand.filter(c => !sortedPlayedCards.some(card => card.id === c.id));
+    
+    const requiresPick = game.previousPlay.length > 0;
+    let turnAdvanced = false;
+
     // Check if player has emptied their hand (round win)
     if (player.hand.length === 0) {
       game.roundWinner = player.id;
@@ -271,17 +334,48 @@ export class MemStorage implements IStorage {
         type: "round_end",
         playerId: player.id
       };
-    } else {
-      // Update last action
+      // Turn logic is handled by round start/game end
+      
+    } else { 
+      // Player did not win, set up next action/turn
+      
+      // Update last action (using sorted cards)
       game.lastAction = {
         type: "play",
         playerId: player.id,
-        cards
+        cards: sortedPlayedCards 
       };
+
+      // If no card pick is required (e.g., first turn), advance turn immediately
+      if (!requiresPick) {
+         game.currentTurn = (playerIndex + 1) % game.players.length;
+         turnAdvanced = true;
+      } 
+      // Else: Pick is required, turn advances after pickCard is called by the client.
     }
     
-    // Reset pass count when a player plays
+    // Reset pass count on any successful play
     game.passCount = 0;
+    
+    // Auto-pick if there's only one card in the previous play
+    if (requiresPick && game.previousPlay.length === 1) {
+      const cardToPickId = game.previousPlay[0].id;
+      
+      // Add the card to player's hand
+      player.hand.push(game.previousPlay[0]);
+      
+      // Clear previous play
+      game.previousPlay = [];
+      
+      // Move to next player's turn
+      game.currentTurn = (playerIndex + 1) % game.players.length;
+      
+      // Update last action
+      game.lastAction = {
+        type: "pick",
+        playerId: player.id
+      };
+    }
     
     return this.updateGame(game);
   }
@@ -335,43 +429,59 @@ export class MemStorage implements IStorage {
     const game = await this.getGame(gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "playing") throw new Error("Game is not in progress");
-    
+
     const playerIndex = game.players.findIndex(p => p.id === playerId);
     if (playerIndex === -1) throw new Error("Player not found");
-    
+
     if (playerIndex !== game.currentTurn) throw new Error("Not your turn");
-    
+
     // Increment pass count
     game.passCount++;
-    
-    // If all players have passed, start new round
-    if (game.passCount >= game.players.length) {
-      // Add current play to deck
+
+    // Calcul du prochain joueur
+    const nextPlayerIndex = (playerIndex + 1) % game.players.length;
+
+    // Si le tour revient au joueur qui a posé les dernières cartes (et qu'il y a des cartes)
+    const isLastPlayerWhoPlayed =
+        game.lastAction.type === "play" &&
+        game.lastAction.playerId === game.players[nextPlayerIndex].id &&
+        game.currentPlay.length > 0; // Ensure there are cards to clear
+
+    // Condition pour vider le milieu:
+    // 1. Le tour revient au dernier joueur qui a joué (et il y a des cartes)
+    // 2. OU tout le monde a passé consécutivement
+    if (isLastPlayerWhoPlayed || game.passCount >= game.players.length - 1) {
+      // Ajouter les cartes au deck
       game.deck = [...game.deck, ...game.currentPlay, ...game.previousPlay];
-      
-      // Clear play areas
+
+      // Vider les zones de jeu
       game.currentPlay = [];
       game.previousPlay = [];
-      
-      // Reset pass count
+
+      // Réinitialiser le compteur de passes
       game.passCount = 0;
-      
-      // Update last action
+
+      // Mettre à jour la dernière action pour indiquer une fin de 'mini-round' ou de manche
+      // Le tour du joueur 'nextPlayerIndex' commencera avec une table vide.
       game.lastAction = {
-        type: "round_end",
+        type: "round_end", // Using round_end signifies the board was cleared
         playerId: null
       };
+
+      // Assigner le tour au joueur qui recommence (celui qui avait posé)
+      game.currentTurn = nextPlayerIndex;
+
     } else {
-      // Move to next player's turn
-      game.currentTurn = (game.currentTurn + 1) % game.players.length;
-      
-      // Update last action
+      // Si le board n'est pas vidé, passer simplement au joueur suivant
+      game.currentTurn = nextPlayerIndex;
+
+      // Mettre à jour la dernière action pour indiquer un 'pass'
       game.lastAction = {
         type: "pass",
         playerId
       };
     }
-    
+
     return this.updateGame(game);
   }
 

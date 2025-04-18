@@ -6,7 +6,7 @@ import type {
 } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_REMOVE_DELAY = 4000
 
 type ToasterToast = ToastProps & {
   id: string
@@ -173,11 +173,22 @@ function useToast() {
 
   React.useEffect(() => {
     listeners.push(setState)
+    
+    // Ajouter un gestionnaire d'événements pour fermer les notifications au clic en dehors
+    const handleOutsideClick = () => {
+      if (state.toasts.length > 0) {
+        dispatch({ type: "DISMISS_TOAST" });
+      }
+    };
+    
+    document.addEventListener("mousedown", handleOutsideClick);
+    
     return () => {
       const index = listeners.indexOf(setState)
       if (index > -1) {
         listeners.splice(index, 1)
       }
+      document.removeEventListener("mousedown", handleOutsideClick);
     }
   }, [state])
 
