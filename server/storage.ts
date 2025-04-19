@@ -435,6 +435,11 @@ export class MemStorage implements IStorage {
 
     if (playerIndex !== game.currentTurn) throw new Error("Not your turn");
 
+    // Si aucune carte n'a été jouée (currentPlay est vide), le joueur ne peut pas passer
+    if (game.currentPlay.length === 0) {
+      throw new Error("You cannot pass when no cards have been played. You must play a card.");
+    }
+
     // Increment pass count
     game.passCount++;
 

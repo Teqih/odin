@@ -573,7 +573,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
             <div className="game-actions flex gap-3">
               <Button
                 variant="secondary"
-                disabled={!isMyTurn || passTurnMutation.isPending}
+                disabled={!isMyTurn || passTurnMutation.isPending || gameState.currentPlay.length === 0}
                 onClick={handlePassTurn}
               >
                 <SkipForward className="mr-1 h-4 w-4" />
