@@ -201,7 +201,7 @@ const LobbyScreen: React.FC = () => {
               </div>
               <div className="flex justify-between items-center">
                 <span>Players:</span>
-                <span>{gameState.players.length}/6</span>
+                <span>{gameState.players.length}/27</span>
               </div>
             </div>
           </div>

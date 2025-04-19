@@ -389,10 +389,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       game.roundWinner = null;
       game.passCount = 0;
       
+      // Calculate maximum cards per player
+      const colors = ["red", "blue", "green", "yellow", "purple", "orange"];
+      const values = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+      const totalCardsInFullDeck = colors.length * values.length; // 54 cards
+      const playerCount = game.players.length;
+      // Maximum cards per player - min of 9 or what's possible with the deck
+      const maxCardsPerPlayer = Math.min(9, Math.floor(totalCardsInFullDeck / playerCount));
+      
       // Deal new cards to all players
       for (const p of game.players) {
         p.hand = [];
-        for (let i = 0; i < 9 && game.deck.length > 0; i++) {
+        for (let i = 0; i < maxCardsPerPlayer && game.deck.length > 0; i++) {
           const card = game.deck.pop()!;
           p.hand.push(card);
         }

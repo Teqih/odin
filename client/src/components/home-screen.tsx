@@ -61,7 +61,7 @@ const HomeScreen: React.FC = () => {
         <CardContent className="pt-6">
           <h2 className="text-2xl font-semibold mb-4">How to Play</h2>
           <ul className="list-disc pl-5 space-y-2">
-            <li>Players are dealt 9 cards each from a 54-card deck (6 colors, numbered 1-9).</li>
+            <li>Players are dealt cards from a 54-card deck (6 colors, numbered 1-9). Up to 6 players get 9 cards each, larger games get fewer cards.</li>
             <li>On your turn, play one or more cards of the same number or color.</li>
             <li>Other players must match with higher value cards or pass.</li>
             <li>After a play, pick up one card from previous play.</li>

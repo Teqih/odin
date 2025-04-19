@@ -50,7 +50,11 @@ const JoinGameScreen: React.FC = () => {
       
     } catch (error) {
       console.error("Failed to join game:", error);
-      setError("Invalid room code or game is full");
+      if (error instanceof Error && error.message.includes("Game is full")) {
+        setError("Game is full (maximum 27 players)");
+      } else {
+        setError("Invalid room code or game not found");
+      }
     } finally {
       setIsJoining(false);
     }

@@ -135,7 +135,14 @@ export class MemStorage implements IStorage {
     const game = await this.getGame(gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "waiting") throw new Error("Game has already started");
-    if (game.players.length >= 6) throw new Error("Game is full");
+    // Suppression de la limite de 6 joueurs
+    // Calcul de la valeur maximale basée sur le jeu de cartes - un joueur minimum doit avoir 2 cartes
+    const colors: CardColor[] = ["red", "blue", "green", "yellow", "purple", "orange"];
+    const values: CardValue[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const totalCardsInDeck = colors.length * values.length; // 54 cartes
+    const maxPlayersLimit = Math.floor(totalCardsInDeck / 2); // Chaque joueur doit avoir au moins 2 cartes
+    
+    if (game.players.length >= maxPlayersLimit) throw new Error("Game is full");
     if (game.players.some(p => p.name === playerName)) throw new Error("Name already taken");
 
     const newPlayer: Player = {
@@ -174,10 +181,16 @@ export class MemStorage implements IStorage {
       [deck[i], deck[j]] = [deck[j], deck[i]];
     }
 
+    // Calculate maximum cards per player
+    const totalCardsInFullDeck = colors.length * values.length; // 54 cards
+    const playerCount = game.players.length;
+    // Maximum cards per player - min of 9 or what's possible with the deck
+    const maxCardsPerPlayer = Math.min(9, Math.floor(totalCardsInFullDeck / playerCount));
+
     // Deal cards to players
     for (const player of game.players) {
       player.hand = [];
-      for (let i = 0; i < 9; i++) {
+      for (let i = 0; i < maxCardsPerPlayer; i++) {
         if (deck.length > 0) {
           const card = deck.pop()!;
           player.hand.push(card);

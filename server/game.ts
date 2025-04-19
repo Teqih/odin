@@ -30,10 +30,17 @@ export function dealCards(game: GameState): GameState {
   const updatedGame = { ...game };
   const deck = [...updatedGame.deck];
   
+  // Calculate maximum cards per player
+  // Total cards: 6 couleurs x 9 valeurs = 54 cartes
+  const totalCardsInFullDeck = 54;
+  const playerCount = updatedGame.players.length;
+  // Calculer le maximum de cartes par joueur de sorte que chacun reçoive le même nombre
+  const maxCardsPerPlayer = Math.min(9, Math.floor(totalCardsInFullDeck / playerCount));
+  
   // Reset player hands
   for (const player of updatedGame.players) {
     player.hand = [];
-    for (let i = 0; i < 9 && deck.length > 0; i++) {
+    for (let i = 0; i < maxCardsPerPlayer && deck.length > 0; i++) {
       const card = deck.pop()!;
       player.hand.push(card);
     }
@@ -45,8 +52,13 @@ export function dealCards(game: GameState): GameState {
 
 // Start a new round
 export function startNewRound(game: GameState): GameState {
+  // Calculate how many cards we need for all players
+  const playerCount = game.players.length;
+  const totalCardsInFullDeck = 54;
+  const maxCardsPerPlayer = Math.min(9, Math.floor(totalCardsInFullDeck / playerCount));
+  
   // Create a new deck if needed
-  if (game.deck.length < game.players.length * 9) {
+  if (game.deck.length < game.players.length * maxCardsPerPlayer) {
     game.deck = createDeck();
   }
   
