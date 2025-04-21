@@ -97,6 +97,8 @@ export type WebSocketMessageType =
   | "round_ended" 
   | "game_ended" 
   | "player_disconnected" 
+  | "ping"
+  | "pong"
   | "error";
 
 export interface WebSocketMessage {

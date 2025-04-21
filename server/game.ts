@@ -30,54 +30,57 @@ export function dealCards(game: GameState): GameState {
   const updatedGame = { ...game };
   const deck = [...updatedGame.deck];
   
-  // Calculate maximum cards per player
-  // Total cards: 6 couleurs x 9 valeurs = 54 cartes
-  const totalCardsInFullDeck = 54;
+  // Calculate maximum cards per player based on the CURRENT deck size
   const playerCount = updatedGame.players.length;
-  // Calculer le maximum de cartes par joueur de sorte que chacun reçoive le même nombre
-  const maxCardsPerPlayer = Math.min(9, Math.floor(totalCardsInFullDeck / playerCount));
-  
-  // Reset player hands
+  if (playerCount === 0) return updatedGame; // Avoid division by zero if no players
+
+  // Calculate the number of cards each player should receive from the available deck
+  const cardsToDeal = deck.length; // Total cards available to deal
+  const maxCardsPerPlayer = Math.min(9, Math.floor(cardsToDeal / playerCount)); // Distribute available cards evenly, capped at 9
+
+  // Ensure we have enough cards for at least one per player if possible
+  if (cardsToDeal < playerCount && cardsToDeal > 0) {
+      // This scenario shouldn't ideally happen if startNewRound refills correctly, 
+      // but as a safeguard, maybe distribute one card each until deck runs out?
+      // For now, stick to the even distribution logic. If maxCardsPerPlayer is 0, no cards are dealt.
+  }
+
+  // Deal cards evenly
   for (const player of updatedGame.players) {
     player.hand = [];
-    for (let i = 0; i < maxCardsPerPlayer && deck.length > 0; i++) {
-      const card = deck.pop()!;
+    // Only deal up to maxCardsPerPlayer, ensuring deck isn't empty
+    for (let i = 0; i < maxCardsPerPlayer && deck.length > 0; i++) { 
+      const card = deck.pop()!; // pop() is safe due to deck.length check
       player.hand.push(card);
     }
   }
   
-  updatedGame.deck = deck;
+  updatedGame.deck = deck; // Update the deck with remaining cards
   return updatedGame;
 }
 
 // Start a new round
 export function startNewRound(game: GameState): GameState {
-  // Calculate how many cards we need for all players
-  const playerCount = game.players.length;
-  const totalCardsInFullDeck = 54;
-  const maxCardsPerPlayer = Math.min(9, Math.floor(totalCardsInFullDeck / playerCount));
-  
-  // Create a new deck if needed
-  if (game.deck.length < game.players.length * maxCardsPerPlayer) {
-    game.deck = createDeck();
-  }
+  // Create a fresh deck for every new round to avoid duplicate cards
+  const updatedGame = { ...game };
+  updatedGame.deck = createDeck();
   
   // Deal cards
-  const updatedGame = dealCards(game);
+  const gameWithDealtCards = dealCards(updatedGame);
   
   // Reset round state
-  updatedGame.currentPlay = [];
-  updatedGame.previousPlay = [];
-  updatedGame.roundWinner = null;
-  updatedGame.passCount = 0;
+  gameWithDealtCards.currentPlay = [];
+  gameWithDealtCards.previousPlay = [];
+  gameWithDealtCards.roundWinner = null;
+  gameWithDealtCards.passCount = 0;
   
   // Find the player with the lowest score to start
   // If tied, use the current order
-  const lowestScore = Math.min(...updatedGame.players.map(p => p.score));
-  const lowestScoreIndex = updatedGame.players.findIndex(p => p.score === lowestScore);
-  updatedGame.currentTurn = lowestScoreIndex;
+  const lowestScore = Math.min(...gameWithDealtCards.players.map(p => p.score));
+  const lowestScoreIndex = gameWithDealtCards.players.findIndex(p => p.score === lowestScore);
+  gameWithDealtCards.currentTurn = lowestScoreIndex;
   
-  return updatedGame;
+  return gameWithDealtCards;
 }
 
 // Check if play is valid

@@ -117,6 +117,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}`] });
     },
     onError: (error) => {
+      // Reset the optimistic UI update
+      setOptimisticGameState(null);
+      
       toast({
         title: "Failed to pass",
         description: error instanceof Error ? error.message : "Please try again",
@@ -145,6 +148,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       });
     }
   });
+  
+  // Add this state for optimistic updates
+  const [optimisticGameState, setOptimisticGameState] = useState<GameState | null>(null);
   
   useEffect(() => {
     // Redirect if no game ID or player ID
@@ -252,6 +258,22 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     }
   }, [gameStateData, playerId, navigate, toast, showRoundEndModal, showGameEndModal, showPickCardModal]);
   
+  // Add a new useEffect to ensure selected cards stay in sync with the current hand
+  useEffect(() => {
+    if (gameStateData) {
+      const currentPlayer = gameStateData.players.find(p => p.id === playerId);
+      if (currentPlayer) {
+        // Clean up selected cards that are no longer in the player's hand
+        // This fixes the state mismatch that causes selection display issues
+        setSelectedCards(prevSelected => 
+          prevSelected.filter(selectedCard => 
+            currentPlayer.hand.some(handCard => handCard.id === selectedCard.id)
+          )
+        );
+      }
+    }
+  }, [gameStateData, playerId]);
+  
   // Handle drag and drop
   const handleDragOver = (e: DragEvent) => {
     e.preventDefault();
@@ -285,6 +307,13 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       // Deselect the card
       setSelectedCards(selectedCards.filter(c => c.id !== card.id));
     } else {
+      // Check if the card is actually in the player's hand
+      const handContainsCard = myHand.some(c => c.id === card.id);
+      if (!handContainsCard) {
+        console.error("Attempted to select a card not in player's hand");
+        return;
+      }
+      
       // Check if the new card can be added to the selection
       const newSelection = [...selectedCards, card];
       if (isValidCardSet(newSelection)) {
@@ -309,11 +338,49 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       return;
     }
     
+    // Ensure all selected cards are actually in the player's hand
+    const allCardsInHand = selectedCards.every(card => 
+      myHand.some(handCard => handCard.id === card.id)
+    );
+    
+    if (!allCardsInHand) {
+      toast({
+        title: "Invalid selection",
+        description: "Some selected cards are not in your hand",
+        variant: "destructive"
+      });
+      setSelectedCards([]); // Reset selection to fix the desync
+      return;
+    }
+    
+    // Create an optimistic update for play cards
+    const optimisticCards = [...selectedCards]; // Store cards for visual feedback
+    
+    // Call the API
     playCardsMutation.mutate(selectedCards);
   };
   
   const handlePassTurn = () => {
-    passTurnMutation.mutate();
+    // Create an optimistic update of the game state
+    if (gameStateData) {
+      const nextPlayerIndex = (gameStateData.currentTurn + 1) % gameStateData.players.length;
+      
+      const optimisticUpdate: GameState = {
+        ...gameStateData,
+        currentTurn: nextPlayerIndex,
+        lastAction: {
+          type: "pass",
+          playerId: playerId
+        },
+        passCount: gameStateData.passCount + 1
+      };
+      
+      // Apply optimistic update immediately
+      setOptimisticGameState(optimisticUpdate);
+      
+      // Apply actual update from server
+      passTurnMutation.mutate();
+    }
   };
   
   const handlePickCard = (card: CardType) => {
@@ -387,7 +454,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   
   // --- Game Logic & Render --- 
   // gameStateData is guaranteed to be valid GameState here
-  const gameState = gameStateData;
+  const gameState = optimisticGameState || gameStateData;
   
   // Get current player data AFTER ensuring gameState is valid
   const currentPlayer = gameState.players.find((p: Player) => p.id === playerId);
@@ -395,18 +462,18 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   // Additional check: If currentPlayer is somehow not found despite being in the game, show an error.
   // This satisfies the linter and handles edge cases.
   if (!currentPlayer) {
-     return (
-       <div className="h-screen flex items-center justify-center bg-background">
-          <Card className="p-6 max-w-md">
-             <div className="text-center">
-               <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <Card className="p-6 max-w-md">
+          <div className="text-center">
+            <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
                <h2 className="text-xl font-semibold mb-2">Error</h2>
                <p className="text-muted-foreground mb-4">Could not find your player data in the game.</p>
                <Button onClick={() => navigate("/")}>Back to Home</Button>
-             </div>
-           </Card>
-         </div>
-     );
+          </div>
+        </Card>
+      </div>
+    );
   }
   
   // Define variables that depend on currentPlayer AFTER the check
@@ -417,6 +484,20 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   const currentPlayCards = gameState.currentPlay;
   const currentTurnPlayer = gameState.players[gameState.currentTurn];
   const opponents = gameState.players.filter(p => p.id !== playerId);
+  
+  // Add a useEffect to clear the optimistic state when we get a new update
+  useEffect(() => {
+    if (gameStateData && optimisticGameState) {
+      // If the server's turn differs from our optimistic update, clear the optimistic state
+      if (gameStateData.currentTurn !== optimisticGameState.currentTurn) {
+        setOptimisticGameState(null);
+      }
+      // Or if we get a new action after our pass
+      if (gameStateData.lastAction.type !== optimisticGameState.lastAction.type) {
+        setOptimisticGameState(null);
+      }
+    }
+  }, [gameStateData]);
   
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -575,7 +656,13 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
                 variant="secondary"
                 disabled={!isMyTurn || passTurnMutation.isPending || gameState.currentPlay.length === 0}
                 onClick={handlePassTurn}
+                className={`relative transition-all ${passTurnMutation.isPending ? 'opacity-70' : ''}`}
               >
+                {passTurnMutation.isPending && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-secondary/30 rounded-md">
+                    <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
                 <SkipForward className="mr-1 h-4 w-4" />
                 Pass
               </Button>

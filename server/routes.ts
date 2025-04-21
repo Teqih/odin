@@ -9,7 +9,10 @@ import {
   PickCardRequest, 
   PassTurnRequest,
   WebSocketMessage,
-  GameState
+  GameState,
+  Card,
+  CardColor,
+  CardValue
 } from "@shared/schema";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -17,26 +20,94 @@ import { filterGameStateForPlayer } from "./game";
 
 // Map of connected clients by game ID and player ID
 const connections = new Map<string, Map<string, WebSocket>>();
+// Track last message sent time to detect stale connections
+const lastMessageTime = new Map<WebSocket, number>();
+// Set up a ping interval to keep connections alive
+let pingInterval: NodeJS.Timeout | null = null;
 
 // Send game state update to all players in a game
 function broadcastGameState(gameId: string, gameState: GameState) {
   const gameConnections = connections.get(gameId);
   if (!gameConnections) return;
+  
+  console.log(`Broadcasting game state to ${gameConnections.size} players in game ${gameId}`);
 
-  for (const [playerId, socket] of gameConnections.entries()) {
+  // Track which players received the update successfully
+  const failedConnections: Array<[string, WebSocket]> = [];
+
+  // Use Array.from to convert the map entries iterator to an array
+  for (const [playerId, socket] of Array.from(gameConnections.entries())) {
     if (socket.readyState === WebSocket.OPEN) {
-      // Filter the game state to hide other players' cards
-      const filteredState = filterGameStateForPlayer(gameState, playerId);
-      
-      const message: WebSocketMessage = {
-        type: "turn_update",
-        gameId,
-        gameState: filteredState
-      };
-      
-      socket.send(JSON.stringify(message));
+      try {
+        // Filter the game state to hide other players' cards
+        const filteredState = filterGameStateForPlayer(gameState, playerId);
+        
+        const message: WebSocketMessage = {
+          type: "turn_update",
+          gameId,
+          gameState: filteredState
+        };
+        
+        socket.send(JSON.stringify(message));
+        // Update last message time
+        lastMessageTime.set(socket, Date.now());
+      } catch (error) {
+        console.error(`Error sending update to player ${playerId}:`, error);
+        failedConnections.push([playerId, socket]);
+      }
+    } else {
+      // Connection is not open, queue for cleanup
+      failedConnections.push([playerId, socket]);
     }
   }
+
+  // Clean up any failed connections
+  for (const [playerId, socket] of failedConnections) {
+    console.log(`Removing stale connection for player ${playerId} in game ${gameId}`);
+    gameConnections.delete(playerId);
+    lastMessageTime.delete(socket);
+    
+    // Mark player as disconnected in game state
+    storage.updatePlayerConnection(gameId, playerId, false)
+      .catch(err => console.error(`Error updating player connection state: ${err}`));
+  }
+
+  // If all connections for a game have failed, clean up the game entry
+  if (gameConnections.size === 0) {
+    connections.delete(gameId);
+  }
+}
+
+// Setup ping function to keep WebSocket connections alive
+function setupPingInterval(wss: WebSocketServer) {
+  if (pingInterval) {
+    clearInterval(pingInterval);
+  }
+  
+  pingInterval = setInterval(() => {
+    const now = Date.now();
+    
+    wss.clients.forEach(socket => {
+      if (socket.readyState === WebSocket.OPEN) {
+        try {
+          // Send ping to verify connection
+          socket.ping();
+          
+          // Check if we haven't sent any messages in a while
+          const lastTime = lastMessageTime.get(socket) || 0;
+          if (now - lastTime > 30000) { // 30 seconds
+            // Send an empty ping message to keep connection alive
+            const pingMessage: WebSocketMessage = { type: "ping" };
+            socket.send(JSON.stringify(pingMessage));
+            lastMessageTime.set(socket, now);
+          }
+        } catch (err) {
+          console.error('Error pinging client:', err);
+          // The socket's onerror handler will handle cleanup
+        }
+      }
+    });
+  }, 15000); // Check every 15 seconds
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -45,8 +116,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Set up WebSocket server
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   
+  // Setup ping interval to keep connections alive
+  setupPingInterval(wss);
+  
   wss.on('connection', (socket: WebSocket) => {
     console.log('WebSocket client connected');
+    lastMessageTime.set(socket, Date.now());
     
     let clientGameId: string | null = null;
     let clientPlayerId: string | null = null;
@@ -54,8 +129,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     socket.on('message', async (data) => {
       try {
         const message: WebSocketMessage = JSON.parse(data.toString());
+        // Update the last message time
+        lastMessageTime.set(socket, Date.now());
         
         if (message.type === 'connect' && message.gameId && message.playerId) {
+          // If client was already connected to a different game, disconnect from that first
+          if (clientGameId && clientGameId !== message.gameId) {
+            const oldGameConnections = connections.get(clientGameId);
+            if (oldGameConnections) {
+              oldGameConnections.delete(clientPlayerId!);
+              if (oldGameConnections.size === 0) {
+                connections.delete(clientGameId);
+              }
+            }
+          }
+          
           clientGameId = message.gameId;
           clientPlayerId = message.playerId;
           
@@ -69,12 +157,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const game = await storage.getGame(clientGameId);
           if (game) {
             await storage.updatePlayerConnection(clientGameId, clientPlayerId, true);
-            // Broadcast updated state
+            // Immediately send the current game state to the newly connected player
             const updatedGame = await storage.getGame(clientGameId);
             if (updatedGame) {
+              // Send only to this player
+              const filteredState = filterGameStateForPlayer(updatedGame, clientPlayerId);
+              socket.send(JSON.stringify({
+                type: "turn_update",
+                gameId: clientGameId,
+                gameState: filteredState
+              }));
+              // Then broadcast to everyone
               broadcastGameState(clientGameId, updatedGame);
             }
           }
+        } else if (message.type === 'ping') {
+          // Respond to ping with pong
+          socket.send(JSON.stringify({ type: 'pong' }));
         }
       } catch (error) {
         console.error('WebSocket message error:', error);
@@ -83,6 +182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     socket.on('close', async () => {
       console.log('WebSocket client disconnected');
+      lastMessageTime.delete(socket);
       
       if (clientGameId && clientPlayerId) {
         // Remove connection
@@ -111,6 +211,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error('Error updating player connection:', error);
         }
       }
+    });
+    
+    socket.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      lastMessageTime.delete(socket);
+      // The socket will be closed automatically after an error
+    });
+    
+    socket.on('pong', () => {
+      // Update last activity time when we receive a pong response
+      lastMessageTime.set(socket, Date.now());
     });
   });
   
@@ -390,8 +501,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       game.passCount = 0;
       
       // Calculate maximum cards per player
-      const colors = ["red", "blue", "green", "yellow", "purple", "orange"];
-      const values = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+      const colors: CardColor[] = ["red", "blue", "green", "yellow", "purple", "orange"];
+      const values: CardValue[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
       const totalCardsInFullDeck = colors.length * values.length; // 54 cards
       const playerCount = game.players.length;
       // Maximum cards per player - min of 9 or what's possible with the deck
@@ -408,16 +519,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // If deck is low, create a new one
       if (game.deck.length < game.players.length * 2) {
-        const colors = ["red", "blue", "green", "yellow", "purple", "orange"];
-        const values = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        const colors: CardColor[] = ["red", "blue", "green", "yellow", "purple", "orange"];
+        const values: CardValue[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
         
-        const newDeck = [];
+        const newDeck: Card[] = [];
         for (const color of colors) {
           for (const value of values) {
             newDeck.push({ 
               id: nanoid(), 
-              color: color as any, 
-              value: value as any 
+              color, 
+              value: value as CardValue // Explicitly cast to ensure type safety
             });
           }
         }

@@ -231,14 +231,14 @@ export class MemStorage implements IStorage {
     if (!cards || cards.length === 0) {
         throw new Error("You must play at least one card.");
     }
-
+    
     // Check if all cards to be played are in player's hand
     for (const card of cards) {
       if (!player.hand.some(c => c.id === card.id)) {
         throw new Error("Card not in player's hand");
       }
     }
-
+    
     // Check if the played cards themselves are valid (all same value or all same color)
     const firstCard = cards[0];
     const playedValue = firstCard.value;
@@ -268,13 +268,13 @@ export class MemStorage implements IStorage {
       const firstCurrentCard = currentPlayCards[0];
       const currentIsSameValue = currentPlayCards.every(c => c.value === firstCurrentCard.value);
       const currentIsSameColor = currentPlayCards.every(c => c.color === firstCurrentCard.color);
-
+      
       // CORRECTION: Les cartes jouées doivent être cohérentes (même valeur OU même couleur) entre elles
       // mais n'ont pas besoin de correspondre au type du jeu précédent
       if (!allSameValue && !allSameColor) {
         throw new Error("All cards played must be the same value or the same color");
       }
-
+      
       // SUPPRESSION: On retire les vérifications qui exigent que le type de jeu soit préservé
       // La règle n'exige pas que si l'adversaire a joué des cartes de même valeur, je doive aussi jouer des cartes de même valeur
       // Ce qui compte c'est que:
@@ -316,7 +316,7 @@ export class MemStorage implements IStorage {
     
     // Sort the played cards by value descending BEFORE storing them
     const sortedPlayedCards = [...cards].sort((a, b) => b.value - a.value);
-
+    
     // Move cards from hand to play area
     game.previousPlay = [...game.currentPlay]; // Keep previous play for potential pick
     game.currentPlay = sortedPlayedCards; // Store sorted cards
@@ -324,7 +324,7 @@ export class MemStorage implements IStorage {
     
     const requiresPick = game.previousPlay.length > 0;
     let turnAdvanced = false;
-
+    
     // Check if player has emptied their hand (round win)
     if (player.hand.length === 0) {
       game.roundWinner = player.id;
@@ -349,7 +349,7 @@ export class MemStorage implements IStorage {
       };
       // Turn logic is handled by round start/game end
       
-    } else { 
+    } else {
       // Player did not win, set up next action/turn
       
       // Update last action (using sorted cards)
@@ -442,20 +442,20 @@ export class MemStorage implements IStorage {
     const game = await this.getGame(gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "playing") throw new Error("Game is not in progress");
-
+    
     const playerIndex = game.players.findIndex(p => p.id === playerId);
     if (playerIndex === -1) throw new Error("Player not found");
-
+    
     if (playerIndex !== game.currentTurn) throw new Error("Not your turn");
 
     // Si aucune carte n'a été jouée (currentPlay est vide), le joueur ne peut pas passer
     if (game.currentPlay.length === 0) {
       throw new Error("You cannot pass when no cards have been played. You must play a card.");
     }
-
+    
     // Increment pass count
     game.passCount++;
-
+    
     // Calcul du prochain joueur
     const nextPlayerIndex = (playerIndex + 1) % game.players.length;
 
@@ -471,14 +471,14 @@ export class MemStorage implements IStorage {
     if (isLastPlayerWhoPlayed || game.passCount >= game.players.length - 1) {
       // Ajouter les cartes au deck
       game.deck = [...game.deck, ...game.currentPlay, ...game.previousPlay];
-
+      
       // Vider les zones de jeu
       game.currentPlay = [];
       game.previousPlay = [];
-
+      
       // Réinitialiser le compteur de passes
       game.passCount = 0;
-
+      
       // Mettre à jour la dernière action pour indiquer une fin de 'mini-round' ou de manche
       // Le tour du joueur 'nextPlayerIndex' commencera avec une table vide.
       game.lastAction = {
@@ -492,14 +492,14 @@ export class MemStorage implements IStorage {
     } else {
       // Si le board n'est pas vidé, passer simplement au joueur suivant
       game.currentTurn = nextPlayerIndex;
-
+      
       // Mettre à jour la dernière action pour indiquer un 'pass'
       game.lastAction = {
         type: "pass",
         playerId
       };
     }
-
+    
     return this.updateGame(game);
   }
 
