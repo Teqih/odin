@@ -12,7 +12,8 @@ import {
   GameState,
   Card,
   CardColor,
-  CardValue
+  CardValue,
+  ChatMessage
 } from "@shared/schema";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -22,8 +23,14 @@ import { filterGameStateForPlayer } from "./game";
 const connections = new Map<string, Map<string, WebSocket>>();
 // Track last message sent time to detect stale connections
 const lastMessageTime = new Map<WebSocket, number>();
+// Track player activity times to detect inactive players
+const lastPlayerActivity = new Map<string, Map<string, number>>();
 // Set up a ping interval to keep connections alive
 let pingInterval: NodeJS.Timeout | null = null;
+// Set up a player activity check interval
+let playerActivityInterval: NodeJS.Timeout | null = null;
+
+const CONNECTION_TIMEOUT = 45000; // 45 seconds of inactivity before considering a player disconnected
 
 // Send game state update to all players in a game
 function broadcastGameState(gameId: string, gameState: GameState) {
@@ -51,6 +58,8 @@ function broadcastGameState(gameId: string, gameState: GameState) {
         socket.send(JSON.stringify(message));
         // Update last message time
         lastMessageTime.set(socket, Date.now());
+        // Update player activity time
+        updatePlayerActivity(gameId, playerId);
       } catch (error) {
         console.error(`Error sending update to player ${playerId}:`, error);
         failedConnections.push([playerId, socket]);
@@ -68,13 +77,47 @@ function broadcastGameState(gameId: string, gameState: GameState) {
     lastMessageTime.delete(socket);
     
     // Mark player as disconnected in game state
-    storage.updatePlayerConnection(gameId, playerId, false)
-      .catch(err => console.error(`Error updating player connection state: ${err}`));
+    markPlayerDisconnected(gameId, playerId);
   }
 
   // If all connections for a game have failed, clean up the game entry
   if (gameConnections.size === 0) {
     connections.delete(gameId);
+  }
+}
+
+// Track player activity for disconnection detection
+function updatePlayerActivity(gameId: string, playerId: string) {
+  if (!lastPlayerActivity.has(gameId)) {
+    lastPlayerActivity.set(gameId, new Map());
+  }
+  
+  lastPlayerActivity.get(gameId)!.set(playerId, Date.now());
+}
+
+// Handle player disconnection
+async function markPlayerDisconnected(gameId: string, playerId: string) {
+  try {
+    // Get player activity map for this game
+    const gameActivity = lastPlayerActivity.get(gameId);
+    if (gameActivity) {
+      // Remove the player activity record
+      gameActivity.delete(playerId);
+      if (gameActivity.size === 0) {
+        lastPlayerActivity.delete(gameId);
+      }
+    }
+    
+    // Mark player as disconnected in the game state
+    await storage.updatePlayerConnection(gameId, playerId, false);
+    
+    // Fetch updated game state and broadcast to remaining players
+    const updatedGame = await storage.getGame(gameId);
+    if (updatedGame) {
+      broadcastGameState(gameId, updatedGame);
+    }
+  } catch (error) {
+    console.error(`Error marking player ${playerId} as disconnected:`, error);
   }
 }
 
@@ -103,11 +146,104 @@ function setupPingInterval(wss: WebSocketServer) {
           }
         } catch (err) {
           console.error('Error pinging client:', err);
-          // The socket's onerror handler will handle cleanup
+          // Close the socket if we can't ping it
+          try {
+            socket.terminate();
+          } catch (e) {
+            console.error('Error terminating socket:', e);
+          }
         }
       }
     });
   }, 15000); // Check every 15 seconds
+}
+
+// Check for inactive players and mark them as disconnected
+function setupPlayerActivityCheck() {
+  if (playerActivityInterval) {
+    clearInterval(playerActivityInterval);
+  }
+  
+  playerActivityInterval = setInterval(async () => {
+    const now = Date.now();
+    
+    // Check each game for inactive players
+    for (const [gameId, playerMap] of Array.from(lastPlayerActivity.entries())) {
+      for (const [playerId, lastActive] of Array.from(playerMap.entries())) {
+        if (now - lastActive > CONNECTION_TIMEOUT) {
+          console.log(`Player ${playerId} in game ${gameId} inactive for too long, marking as disconnected`);
+          
+          // Get the player's socket if it exists
+          const gameConnections = connections.get(gameId);
+          if (gameConnections) {
+            const socket = gameConnections.get(playerId);
+            if (socket) {
+              // Try to close the socket
+              try {
+                socket.terminate();
+              } catch (e) {
+                console.error('Error terminating inactive socket:', e);
+              }
+              
+              // Remove the connection
+              gameConnections.delete(playerId);
+              lastMessageTime.delete(socket);
+            }
+          }
+          
+          // Mark the player as disconnected
+          await markPlayerDisconnected(gameId, playerId);
+        }
+      }
+    }
+  }, 20000); // Check every 20 seconds
+}
+
+// Send chat message to all players in a game
+async function broadcastChatMessage(chatMessage: ChatMessage) {
+  const gameId = chatMessage.gameId;
+  const gameConnections = connections.get(gameId);
+  if (!gameConnections) return;
+  
+  console.log(`Broadcasting chat message from ${chatMessage.playerName} to ${gameConnections.size} players in game ${gameId}`);
+
+  const message: WebSocketMessage = {
+    type: "chat_message",
+    gameId,
+    chatMessage
+  };
+  
+  // Track which players received the message successfully
+  const failedConnections: Array<[string, WebSocket]> = [];
+
+  // Send to all players
+  for (const [playerId, socket] of Array.from(gameConnections.entries())) {
+    if (socket.readyState === WebSocket.OPEN) {
+      try {
+        socket.send(JSON.stringify(message));
+        // Update last message time
+        lastMessageTime.set(socket, Date.now());
+        // Update player activity time
+        updatePlayerActivity(gameId, playerId);
+      } catch (error) {
+        console.error(`Error sending chat message to player ${playerId}:`, error);
+        failedConnections.push([playerId, socket]);
+      }
+    } else {
+      // Connection is not open, queue for cleanup
+      failedConnections.push([playerId, socket]);
+    }
+  }
+
+  // Clean up any failed connections
+  for (const [playerId, socket] of failedConnections) {
+    console.log(`Removing stale connection for player ${playerId} in game ${gameId}`);
+    gameConnections.delete(playerId);
+    lastMessageTime.delete(socket);
+    
+    // Mark player as disconnected in game state
+    markPlayerDisconnected(gameId, playerId);
+  }
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -118,6 +254,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Setup ping interval to keep connections alive
   setupPingInterval(wss);
+  
+  // Setup player activity check
+  setupPlayerActivityCheck();
   
   wss.on('connection', (socket: WebSocket) => {
     console.log('WebSocket client connected');
@@ -133,6 +272,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lastMessageTime.set(socket, Date.now());
         
         if (message.type === 'connect' && message.gameId && message.playerId) {
+          // Check if this player is already connected with a different socket
+          const existingGameConnections = connections.get(message.gameId);
+          if (existingGameConnections) {
+            const existingSocket = existingGameConnections.get(message.playerId);
+            if (existingSocket && existingSocket !== socket && existingSocket.readyState === WebSocket.OPEN) {
+              // Player already has an active connection - close the old one
+              console.log(`Player ${message.playerId} already connected, closing previous connection`);
+              
+              // Close the existing socket - send a disconnect notification first
+              try {
+                existingSocket.send(JSON.stringify({
+                  type: "error",
+                  error: "You connected from another device or browser tab."
+                }));
+                existingSocket.close(1000, "Replaced by new connection");
+              } catch (e) {
+                console.error('Error closing existing socket:', e);
+              }
+              
+              // Remove the old connection
+              existingGameConnections.delete(message.playerId);
+              lastMessageTime.delete(existingSocket);
+            }
+          }
+          
           // If client was already connected to a different game, disconnect from that first
           if (clientGameId && clientGameId !== message.gameId) {
             const oldGameConnections = connections.get(clientGameId);
@@ -141,6 +305,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (oldGameConnections.size === 0) {
                 connections.delete(clientGameId);
               }
+              
+              // Mark player as disconnected from previous game
+              await markPlayerDisconnected(clientGameId, clientPlayerId!);
             }
           }
           
@@ -152,6 +319,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             connections.set(clientGameId, new Map());
           }
           connections.get(clientGameId)!.set(clientPlayerId, socket);
+          
+          // Update player activity time
+          updatePlayerActivity(clientGameId, clientPlayerId);
           
           // Mark player as connected
           const game = await storage.getGame(clientGameId);
@@ -174,6 +344,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else if (message.type === 'ping') {
           // Respond to ping with pong
           socket.send(JSON.stringify({ type: 'pong' }));
+          
+          // Update activity time for the player when they ping
+          if (clientGameId && clientPlayerId) {
+            updatePlayerActivity(clientGameId, clientPlayerId);
+          }
+        } else if (message.type === 'chat_message') {
+          if (message.gameId && message.playerId && message.chatMessage?.message) {
+            try {
+              // Get player info to attach the right name
+              const game = await storage.getGame(message.gameId);
+              if (!game) {
+                console.error(`Game ${message.gameId} not found for chat message`);
+                return;
+              }
+              
+              const player = game.players.find(p => p.id === message.playerId);
+              if (!player) {
+                console.error(`Player ${message.playerId} not found in game ${message.gameId} for chat message`);
+                return;
+              }
+              
+              // Save and broadcast the chat message
+              const chatMessage = await storage.saveChatMessage(
+                message.gameId,
+                message.playerId,
+                player.name,
+                message.chatMessage.message
+              );
+              
+              await broadcastChatMessage(chatMessage);
+            } catch (error) {
+              console.error("Error handling chat message:", error);
+            }
+          }
+        } else if (message.type === 'chat_history') {
+          if (message.gameId && message.playerId) {
+            try {
+              const chatHistory = await storage.getChatMessages(message.gameId);
+              
+              const historyMessage: WebSocketMessage = {
+                type: "chat_history",
+                gameId: message.gameId,
+                playerId: message.playerId,
+                chatHistory
+              };
+              
+              socket.send(JSON.stringify(historyMessage));
+            } catch (error) {
+              console.error("Error sending chat history:", error);
+            }
+          }
         }
       } catch (error) {
         console.error('WebSocket message error:', error);
@@ -188,27 +409,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Remove connection
         const gameConnections = connections.get(clientGameId);
         if (gameConnections) {
-          gameConnections.delete(clientPlayerId);
-          
-          // If no connections left for this game, clean up
-          if (gameConnections.size === 0) {
-            connections.delete(clientGameId);
-          }
-        }
-        
-        // Mark player as disconnected
-        try {
-          const game = await storage.getGame(clientGameId);
-          if (game) {
-            await storage.updatePlayerConnection(clientGameId, clientPlayerId, false);
-            // Broadcast updated state
-            const updatedGame = await storage.getGame(clientGameId);
-            if (updatedGame) {
-              broadcastGameState(clientGameId, updatedGame);
+          // Only remove this specific socket if it's still the current one for the player
+          const currentSocket = gameConnections.get(clientPlayerId);
+          if (currentSocket === socket) {
+            gameConnections.delete(clientPlayerId);
+            
+            // If no connections left for this game, clean up
+            if (gameConnections.size === 0) {
+              connections.delete(clientGameId);
             }
+            
+            // Mark player as disconnected
+            await markPlayerDisconnected(clientGameId, clientPlayerId);
           }
-        } catch (error) {
-          console.error('Error updating player connection:', error);
         }
       }
     });
@@ -216,12 +429,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     socket.on('error', (error) => {
       console.error('WebSocket error:', error);
       lastMessageTime.delete(socket);
-      // The socket will be closed automatically after an error
+      
+      // Forcefully terminate the socket on error
+      try {
+        socket.terminate();
+      } catch (e) {
+        console.error('Error terminating socket after error:', e);
+      }
+      
+      // Mark player as disconnected if we have their info
+      if (clientGameId && clientPlayerId) {
+        markPlayerDisconnected(clientGameId, clientPlayerId).catch(e => {
+          console.error('Error marking player disconnected after socket error:', e);
+        });
+      }
     });
     
     socket.on('pong', () => {
       // Update last activity time when we receive a pong response
       lastMessageTime.set(socket, Date.now());
+      
+      // Update player activity
+      if (clientGameId && clientPlayerId) {
+        updatePlayerActivity(clientGameId, clientPlayerId);
+      }
     });
   });
   
@@ -494,55 +725,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Only the host can start a new round' });
       }
       
-      // Reset for new round
-      game.currentPlay = [];
-      game.previousPlay = [];
-      game.roundWinner = null;
-      game.passCount = 0;
-      
-      // Calculate maximum cards per player
-      const colors: CardColor[] = ["red", "blue", "green", "yellow", "purple", "orange"];
-      const values: CardValue[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-      const totalCardsInFullDeck = colors.length * values.length; // 54 cards
-      const playerCount = game.players.length;
-      // Maximum cards per player - min of 9 or what's possible with the deck
-      const maxCardsPerPlayer = Math.min(9, Math.floor(totalCardsInFullDeck / playerCount));
-      
-      // Deal new cards to all players
-      for (const p of game.players) {
-        p.hand = [];
-        for (let i = 0; i < maxCardsPerPlayer && game.deck.length > 0; i++) {
-          const card = game.deck.pop()!;
-          p.hand.push(card);
-        }
-      }
-      
-      // If deck is low, create a new one
-      if (game.deck.length < game.players.length * 2) {
-        const colors: CardColor[] = ["red", "blue", "green", "yellow", "purple", "orange"];
-        const values: CardValue[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-        
-        const newDeck: Card[] = [];
-        for (const color of colors) {
-          for (const value of values) {
-            newDeck.push({ 
-              id: nanoid(), 
-              color, 
-              value: value as CardValue // Explicitly cast to ensure type safety
-            });
-          }
-        }
-        
-        // Shuffle the new deck
-        for (let i = newDeck.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [newDeck[i], newDeck[j]] = [newDeck[j], newDeck[i]];
-        }
-        
-        game.deck = [...game.deck, ...newDeck];
-      }
-      
-      const updatedGame = await storage.updateGame(game);
+      // Use the centralized storage method to start the new round
+      const updatedGame = await storage.startNewRound(gameId);
       
       // Broadcast updated state to all clients
       broadcastGameState(gameId, updatedGame);

@@ -99,7 +99,19 @@ export type WebSocketMessageType =
   | "player_disconnected" 
   | "ping"
   | "pong"
-  | "error";
+  | "error"
+  | "chat_message"
+  | "chat_history";
+
+// Add a ChatMessage interface
+export interface ChatMessage {
+  id: string;
+  gameId: string;
+  playerId: string;
+  playerName: string;
+  message: string;
+  timestamp: number;
+}
 
 export interface WebSocketMessage {
   type: WebSocketMessageType;
@@ -107,4 +119,6 @@ export interface WebSocketMessage {
   playerId?: string;
   gameState?: GameState;
   error?: string;
+  chatMessage?: ChatMessage;
+  chatHistory?: ChatMessage[];
 }

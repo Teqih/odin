@@ -5,9 +5,11 @@ import {
   Player, 
   Card,
   CardColor,
-  CardValue
+  CardValue,
+  ChatMessage
 } from "@shared/schema";
 import { nanoid } from "nanoid";
+import { startNewRound as startNewRoundLogic } from "./game"; // Import game logic
 
 // Define storage interface with additional methods for game management
 export interface IStorage {
@@ -23,11 +25,17 @@ export interface IStorage {
   updateGame(gameState: GameState): Promise<GameState>;
   addPlayerToGame(gameId: string, playerName: string): Promise<GameState>;
   startGame(gameId: string): Promise<GameState>;
+  startNewRound(gameId: string): Promise<GameState>;
   playCards(gameId: string, playerId: string, cards: Card[]): Promise<GameState>;
   pickCard(gameId: string, playerId: string, cardId: string): Promise<GameState>;
   passTurn(gameId: string, playerId: string): Promise<GameState>;
   updatePlayerConnection(gameId: string, playerId: string, connected: boolean): Promise<GameState>;
   getAllActiveGames(): Promise<GameState[]>;
+  
+  // Chat methods
+  saveChatMessage(gameId: string, playerId: string, playerName: string, message: string): Promise<ChatMessage>;
+  getChatMessages(gameId: string): Promise<ChatMessage[]>;
+  clearChatMessages(gameId: string): Promise<void>;
 }
 
 // Helper function to calculate the numeric value of a play
@@ -47,6 +55,7 @@ export class MemStorage implements IStorage {
   private games: Map<string, GameState>;
   private roomCodes: Map<string, string>; // Maps room codes to game IDs
   private currentId: number;
+  private chatMessages = new Map<string, ChatMessage[]>();
 
   constructor() {
     this.users = new Map();
@@ -164,55 +173,30 @@ export class MemStorage implements IStorage {
     if (game.players.length < 2) throw new Error("Not enough players");
     if (game.status !== "waiting") throw new Error("Game has already started");
 
-    // Create deck
-    const deck: Card[] = [];
-    const colors: CardColor[] = ["red", "blue", "green", "yellow", "purple", "orange"];
-    const values: CardValue[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-    for (const color of colors) {
-      for (const value of values) {
-        deck.push({ id: nanoid(), color, value });
-      }
-    }
-
-    // Shuffle deck
-    for (let i = deck.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-
-    // Calculate maximum cards per player
-    const totalCardsInFullDeck = colors.length * values.length; // 54 cards
-    const playerCount = game.players.length;
-    // Maximum cards per player - min of 9 or what's possible with the deck
-    const maxCardsPerPlayer = Math.min(9, Math.floor(totalCardsInFullDeck / playerCount));
-
-    // Deal cards to players
-    for (const player of game.players) {
-      player.hand = [];
-      for (let i = 0; i < maxCardsPerPlayer; i++) {
-        if (deck.length > 0) {
-          const card = deck.pop()!;
-          player.hand.push(card);
-        }
-      }
-    }
-
-    // Update game state
-    game.status = "playing";
-    game.deck = deck;
-    game.currentTurn = 0;
-    game.currentPlay = [];
-    game.previousPlay = [];
-    game.roundWinner = null;
-    game.gameWinner = null;
-    game.lastAction = {
+    // Use the central startNewRound logic to set up the first round
+    const startedGame = startNewRoundLogic(game);
+    
+    // Update status and persist
+    startedGame.status = "playing";
+    startedGame.gameWinner = null;
+    startedGame.lastAction = {
       type: null,
       playerId: null
     };
-    game.passCount = 0;
+    
+    return this.updateGame(startedGame);
+  }
 
-    return this.updateGame(game);
+  async startNewRound(gameId: string): Promise<GameState> {
+    const game = await this.getGame(gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "playing") throw new Error("Game is not in progress");
+    
+    // Use the imported game logic function
+    const updatedGame = startNewRoundLogic(game);
+    
+    // Persist the updated game state
+    return this.updateGame(updatedGame);
   }
 
   async playCards(gameId: string, playerId: string, cards: Card[]): Promise<GameState> {
@@ -510,24 +494,65 @@ export class MemStorage implements IStorage {
     const playerIndex = game.players.findIndex(p => p.id === playerId);
     if (playerIndex === -1) throw new Error("Player not found");
     
-    game.players[playerIndex].connected = connected;
-    
-    // If the host disconnects, make the next connected player the host
-    if (!connected && game.players[playerIndex].isHost) {
-      const connectedPlayers = game.players.filter(p => p.connected && p.id !== playerId);
-      if (connectedPlayers.length > 0) {
-        game.players[playerIndex].isHost = false;
-        const newHostIndex = game.players.findIndex(p => p.id === connectedPlayers[0].id);
-        game.players[newHostIndex].isHost = true;
+    // Only update if status actually changes
+    if (game.players[playerIndex].connected !== connected) {
+      game.players[playerIndex].connected = connected;
+      
+      // If the host disconnects, make the next connected player the host
+      if (!connected && game.players[playerIndex].isHost) {
+        const connectedPlayers = game.players.filter(p => p.connected && p.id !== playerId);
+        if (connectedPlayers.length > 0) {
+          game.players[playerIndex].isHost = false;
+          const newHostIndex = game.players.findIndex(p => p.id === connectedPlayers[0].id);
+          if (newHostIndex !== -1) {
+            game.players[newHostIndex].isHost = true;
+          }
+        }
       }
+      
+      return this.updateGame(game);
     }
     
-    return this.updateGame(game);
+    return game; // Return existing game if no change
   }
 
   async getAllActiveGames(): Promise<GameState[]> {
     return Array.from(this.games.values())
       .filter(game => game.status !== "finished" && game.players.some(p => p.connected));
+  }
+
+  // Chat methods
+  async saveChatMessage(gameId: string, playerId: string, playerName: string, message: string): Promise<ChatMessage> {
+    if (!this.chatMessages.has(gameId)) {
+      this.chatMessages.set(gameId, []);
+    }
+    
+    const chatMessage: ChatMessage = {
+      id: nanoid(),
+      gameId,
+      playerId,
+      playerName,
+      message,
+      timestamp: Date.now()
+    };
+    
+    this.chatMessages.get(gameId)!.push(chatMessage);
+    
+    // Limit chat history to last 100 messages
+    const gameMessages = this.chatMessages.get(gameId)!;
+    if (gameMessages.length > 100) {
+      this.chatMessages.set(gameId, gameMessages.slice(gameMessages.length - 100));
+    }
+    
+    return chatMessage;
+  }
+  
+  async getChatMessages(gameId: string): Promise<ChatMessage[]> {
+    return this.chatMessages.get(gameId) || [];
+  }
+  
+  async clearChatMessages(gameId: string): Promise<void> {
+    this.chatMessages.delete(gameId);
   }
 }
 

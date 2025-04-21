@@ -282,32 +282,53 @@ export function addMessageHandler(handler: (message: WebSocketMessage) => void) 
 }
 
 export function sendMessage(message: WebSocketMessage) {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    try {
-      socket.send(JSON.stringify(message));
-    } catch (e) {
-      console.error("Error sending message:", e);
-      // If we can't send a message, try reconnecting
-      if (currentGameId && currentPlayerId) {
-        attemptReconnect();
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    console.error("Cannot send message: WebSocket is not connected");
+    
+    // Attempt to reconnect if we have credentials
+    if (currentGameId && currentPlayerId && socket?.readyState !== WebSocket.CONNECTING) {
+      console.log("Attempting to reconnect before sending message...");
+      try {
+        connectToGameServer(currentGameId, currentPlayerId);
+        
+        // Queue the message to be sent after connection
+        const reconnectTimeout = setTimeout(() => {
+          // Check if we're connected now
+          if (socket?.readyState === WebSocket.OPEN) {
+            try {
+              socket.send(JSON.stringify(message));
+              console.log("Message sent after reconnection");
+            } catch (e) {
+              console.error("Failed to send message after reconnection:", e);
+            }
+          } else {
+            console.error("Still not connected after reconnection attempt");
+          }
+          clearTimeout(reconnectTimeout);
+        }, 1000);
+      } catch (e) {
+        console.error("Failed to reconnect for sending message:", e);
       }
     }
-  } else {
-    console.error(`WebSocket not connected (state: ${socket?.readyState}). Attempting to reconnect...`);
-    // Try to reconnect since the socket isn't ready
-    if (currentGameId && currentPlayerId) {
-      attemptReconnect();
-    } else {
-      // Try to recover from session storage
-      const storedGameId = sessionStorage.getItem("gameId");
-      const storedPlayerId = sessionStorage.getItem("playerId");
-      
-      if (storedGameId && storedPlayerId) {
-        currentGameId = storedGameId;
-        currentPlayerId = storedPlayerId;
-        attemptReconnect();
+    
+    return false;
+  }
+  
+  try {
+    // Special handling for chat messages to ensure proper format
+    if (message.type === "chat_message" && message.chatMessage) {
+      // Make sure the message has all the required fields
+      if (!message.gameId || !message.playerId) {
+        message.gameId = currentGameId || "";
+        message.playerId = currentPlayerId || "";
       }
     }
+    
+    socket.send(JSON.stringify(message));
+    return true;
+  } catch (error) {
+    console.error("Error sending message:", error);
+    return false;
   }
 }
 
@@ -323,4 +344,22 @@ export function getConnectionStatus(): "connected" | "connecting" | "disconnecte
     default:
       return "disconnected";
   }
+}
+
+// Add a function to register a message handler specifically for a message type
+export function addTypedMessageHandler(type: string, handler: (message: WebSocketMessage) => void) {
+  const wrappedHandler = (message: WebSocketMessage) => {
+    if (message.type === type) {
+      handler(message);
+    }
+  };
+  
+  messageHandlers.push(wrappedHandler);
+  return () => {
+    // Return a function to remove this handler if needed
+    const index = messageHandlers.indexOf(wrappedHandler);
+    if (index !== -1) {
+      messageHandlers.splice(index, 1);
+    }
+  };
 }

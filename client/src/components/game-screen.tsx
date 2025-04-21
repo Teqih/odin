@@ -6,7 +6,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import { connectToGameServer, addMessageHandler, disconnectFromGameServer } from "@/lib/websocket";
+import { 
+  connectToGameServer, 
+  addMessageHandler, 
+  disconnectFromGameServer, 
+  getConnectionStatus, 
+  forceReconnect 
+} from "@/lib/websocket";
 import { Card as CardType, GameState, Player, WebSocketMessage } from "@shared/schema";
 import CardComponent from "@/components/ui/card-component";
 import PlayerAvatar from "@/components/ui/player-avatar";
@@ -19,9 +25,11 @@ import {
   SkipForward,
   HelpCircle,
   Send,
-  AlertCircle
+  AlertCircle,
+  MessageCircle
 } from "lucide-react";
 import { isValidCardSet, sortCards } from "@/lib/card-utils";
+import ChatPanel from "@/components/ui/chat-panel";
 
 const playerColors = [
   "#e53935", // red
@@ -64,12 +72,29 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   // Add a ref to store hands to avoid dependency issues
   const handRef = useRef<CardType[]>([]);
 
+  // Add a state for disconnection notification
+  const [connectionStatus, setConnectionStatus] = useState<"connected" | "connecting" | "disconnected" | "reconnecting">("connecting");
+  const [showDisconnectedAlert, setShowDisconnectedAlert] = useState(false);
+
+  // Add this state for managing chat panel visibility
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   // Fetch game state
-  const { data: gameStateData, isLoading, error } = useQuery<GameState>({
+  const { data: gameStateData, isLoading, error, isError } = useQuery<GameState, Error>({
     queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`],
     enabled: !!gameId && !!playerId,
     refetchInterval: 2000,
-    refetchIntervalInBackground: true
+    refetchIntervalInBackground: true,
+    retry: (failureCount, error) => {
+      // Don't retry on 403 or 404 errors, as the game/player likely doesn't exist
+      if (error.message.includes('403') || error.message.includes('404')) {
+        return false;
+      }
+      // Otherwise, retry up to 3 times
+      return failureCount < 3;
+    },
+    staleTime: 1000, // Reduce stale time slightly
   });
 
   // Prepare the game state and hand data early to avoid hook ordering issues
@@ -166,7 +191,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   });
   
   useEffect(() => {
-    // Ensure we have game ID and player ID
+    // Redirect if no game ID or player ID
     if (!gameId || !playerId) {
       console.log("Missing gameId or playerId, redirecting to home");
       navigate("/");
@@ -181,8 +206,12 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     let socket;
     try {
       socket = connectToGameServer(gameId, playerId);
+      // Start with connecting status
+      setConnectionStatus("connecting");
     } catch (err) {
       console.error("Error connecting to WebSocket:", err);
+      setConnectionStatus("disconnected");
+      setShowDisconnectedAlert(true);
       toast({
         title: "Connection Error",
         description: "Failed to connect to game server. Please try refreshing the page.",
@@ -194,14 +223,35 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     const removeHandler = addMessageHandler((message: WebSocketMessage) => {
       if (message.type === "turn_update" && message.gameId === gameId) {
         queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`] });
+        // Set connected status when we receive game updates
+        setConnectionStatus("connected");
+        setShowDisconnectedAlert(false);
       } else if (message.type === "error") {
         toast({
           title: "Connection Error",
           description: message.error || "An error occurred with the game connection",
           variant: "destructive"
         });
+        
+        // If the error is about a duplicate connection, navigate home
+        if (message.error?.includes("another device or browser tab")) {
+          navigate("/");
+        }
       }
     });
+    
+    // Set up a periodic connection status check
+    const statusCheckInterval = setInterval(() => {
+      const status = getConnectionStatus();
+      setConnectionStatus(status);
+      
+      // Show disconnected alert if we're disconnected or reconnecting
+      if (status === "disconnected" || status === "reconnecting") {
+        setShowDisconnectedAlert(true);
+      } else if (status === "connected") {
+        setShowDisconnectedAlert(false);
+      }
+    }, 2000);
     
     // Add drag and drop event listeners
     const dropZone = dropZoneRef.current;
@@ -214,6 +264,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     return () => {
       removeHandler();
       disconnectFromGameServer();
+      clearInterval(statusCheckInterval);
       
       // Remove event listeners
       if (dropZone) {
@@ -456,6 +507,57 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     });
   };
   
+  // Add a button to manually reconnect if disconnected
+  const handleReconnect = () => {
+    // Attempt to force reconnect
+    forceReconnect();
+    toast({
+      title: "Reconnecting...",
+      description: "Attempting to reconnect to the game server.",
+    });
+  };
+  
+  // Add an effect to handle query errors, specifically 403/404
+  useEffect(() => {
+    if (isError && error) {
+      const errorMessage = error.message.toLowerCase();
+      if (errorMessage.includes("403") || errorMessage.includes("404")) {
+        console.error("Game or Player not found (403/404). Clearing session and redirecting.");
+        toast({
+          title: "Game session ended",
+          description: "The game was not found or your session expired. Redirecting to home.",
+          variant: "destructive"
+        });
+        // Clear stale session data
+        sessionStorage.removeItem("gameId");
+        sessionStorage.removeItem("playerId");
+        sessionStorage.removeItem("playerName");
+        sessionStorage.removeItem("roomCode");
+        // Redirect home
+        navigate("/");
+      }
+    }
+  }, [isError, error, navigate, toast]);
+  
+  // Function to handle opening the chat
+  const handleOpenChat = () => {
+    setIsChatOpen(true);
+    setUnreadCount(0); // Reset unread count when opening chat
+  };
+  
+  // Function to handle new chat messages and count them when the chat is closed
+  const handleChatMessage = (message: WebSocketMessage) => {
+    if (message.type === "chat_message" && !isChatOpen && message.chatMessage?.playerId !== playerId) {
+      setUnreadCount(prev => prev + 1);
+    }
+  };
+  
+  // Register the chat message handler for counting unread messages
+  useEffect(() => {
+    const cleanup = addMessageHandler(handleChatMessage);
+    return () => cleanup();
+  }, [isChatOpen, playerId]);
+  
   // Handle loading state
   if (isLoading || !gameStateData) {
     return (
@@ -541,6 +643,22 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         </div>
         
         <div className="flex items-center gap-3">
+          {/* Connection Status Indicator */}
+          <div className="flex items-center mr-2">
+            <div className={`h-2 w-2 rounded-full mr-1 ${
+              connectionStatus === "connected" ? "bg-green-500" :
+              connectionStatus === "connecting" ? "bg-yellow-500" :
+              connectionStatus === "reconnecting" ? "bg-yellow-500 animate-pulse" :
+              "bg-red-500"
+            }`} />
+            <span className="text-xs text-muted-foreground">
+              {connectionStatus === "connected" ? "Connected" :
+               connectionStatus === "connecting" ? "Connecting..." :
+               connectionStatus === "reconnecting" ? "Reconnecting..." :
+               "Disconnected"}
+            </span>
+          </div>
+          
           <Button 
             variant="ghost" 
             size="sm" 
@@ -559,6 +677,22 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
           </Button>
         </div>
       </header>
+      
+      {/* Disconnection Alert */}
+      {showDisconnectedAlert && (
+        <div className="bg-destructive/20 text-destructive p-2 text-center flex items-center justify-center">
+          <AlertCircle className="h-4 w-4 mr-2" />
+          <span>Connection lost. Game updates may be delayed.</span>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="ml-2 h-7"
+            onClick={handleReconnect}
+          >
+            Reconnect
+          </Button>
+        </div>
+      )}
       
       {/* Game Play Area */}
       <main className="flex-grow flex flex-col justify-between overflow-hidden">
@@ -710,6 +844,21 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
                 <Send className="mr-1 h-4 w-4" />
                 Play Cards
               </Button>
+              
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleOpenChat}
+                title="Chat"
+                className="ml-2 relative"
+              >
+                <MessageCircle className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full h-5 min-w-5 flex items-center justify-center text-xs font-medium">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </Button>
             </div>
           </div>
         </div>
@@ -780,6 +929,17 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
           scores={finalScores}
           onNewGame={handleNewGame}
           onBackToLobby={handleBackToLobby}
+        />
+      )}
+      
+      {/* Add the ChatPanel */}
+      {currentPlayer && (
+        <ChatPanel
+          gameId={gameId}
+          playerId={playerId}
+          playerName={currentPlayer.name}
+          open={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
         />
       )}
     </div>

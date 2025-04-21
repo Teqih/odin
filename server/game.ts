@@ -49,7 +49,7 @@ export function dealCards(game: GameState): GameState {
   for (const player of updatedGame.players) {
     player.hand = [];
     // Only deal up to maxCardsPerPlayer, ensuring deck isn't empty
-    for (let i = 0; i < maxCardsPerPlayer && deck.length > 0; i++) { 
+    for (let i = 0; i < maxCardsPerPlayer && deck.length > 0; i++) {
       const card = deck.pop()!; // pop() is safe due to deck.length check
       player.hand.push(card);
     }
