@@ -41,7 +41,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   const { toast } = useToast();
   const dropZoneRef = useRef<HTMLDivElement>(null);
   
-  // Get stored player info
+  // Get stored player info - ensure this is persisted properly
   const playerId = sessionStorage.getItem("playerId") || "";
   
   // State for selected cards and game flow
@@ -58,6 +58,12 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   // Drag and drop state
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   
+  // Add this state for optimistic updates
+  const [optimisticGameState, setOptimisticGameState] = useState<GameState | null>(null);
+  
+  // Add a ref to store hands to avoid dependency issues
+  const handRef = useRef<CardType[]>([]);
+
   // Fetch game state
   const { data: gameStateData, isLoading, error } = useQuery<GameState>({
     queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`],
@@ -65,6 +71,16 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     refetchInterval: 2000,
     refetchIntervalInBackground: true
   });
+
+  // Prepare the game state and hand data early to avoid hook ordering issues
+  const gameState = optimisticGameState || gameStateData;
+  const currentPlayer = gameState?.players?.find((p: Player) => p.id === playerId);
+  const myHand = currentPlayer ? sortCards(currentPlayer.hand || []) : [];
+  
+  // Update the hand ref whenever myHand changes
+  useEffect(() => {
+    handRef.current = myHand;
+  }, [myHand]);
   
   // Play cards mutation
   const playCardsMutation = useMutation({
@@ -149,23 +165,41 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     }
   });
   
-  // Add this state for optimistic updates
-  const [optimisticGameState, setOptimisticGameState] = useState<GameState | null>(null);
-  
   useEffect(() => {
-    // Redirect if no game ID or player ID
+    // Ensure we have game ID and player ID
     if (!gameId || !playerId) {
+      console.log("Missing gameId or playerId, redirecting to home");
       navigate("/");
       return;
     }
     
-    // Connect to WebSocket
-    const socket = connectToGameServer(gameId, playerId);
+    // Save IDs to session storage to help with reconnection
+    sessionStorage.setItem("gameId", gameId);
+    sessionStorage.setItem("playerId", playerId);
+    
+    // Connect to WebSocket with improved error handling
+    let socket;
+    try {
+      socket = connectToGameServer(gameId, playerId);
+    } catch (err) {
+      console.error("Error connecting to WebSocket:", err);
+      toast({
+        title: "Connection Error",
+        description: "Failed to connect to game server. Please try refreshing the page.",
+        variant: "destructive"
+      });
+    }
     
     // Add message handler
     const removeHandler = addMessageHandler((message: WebSocketMessage) => {
       if (message.type === "turn_update" && message.gameId === gameId) {
         queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`] });
+      } else if (message.type === "error") {
+        toast({
+          title: "Connection Error",
+          description: message.error || "An error occurred with the game connection",
+          variant: "destructive"
+        });
       }
     });
     
@@ -188,7 +222,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         dropZone.removeEventListener("drop", handleDrop);
       }
     };
-  }, [gameId, playerId, navigate]);
+  }, [gameId, playerId, navigate, toast]);
   
   useEffect(() => {
     if (gameStateData) {
@@ -308,7 +342,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       setSelectedCards(selectedCards.filter(c => c.id !== card.id));
     } else {
       // Check if the card is actually in the player's hand
-      const handContainsCard = myHand.some(c => c.id === card.id);
+      const currentHand = handRef.current;
+      const handContainsCard = currentHand.some(c => c.id === card.id);
       if (!handContainsCard) {
         console.error("Attempted to select a card not in player's hand");
         return;
@@ -339,8 +374,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     }
     
     // Ensure all selected cards are actually in the player's hand
+    const currentHand = handRef.current;
     const allCardsInHand = selectedCards.every(card => 
-      myHand.some(handCard => handCard.id === card.id)
+      currentHand.some(handCard => handCard.id === card.id)
     );
     
     if (!allCardsInHand) {
@@ -421,7 +457,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   };
   
   // Handle loading state
-  if (isLoading) {
+  if (isLoading || !gameStateData) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -432,8 +468,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     );
   }
   
-  // Handle error or missing data state
-  if (error || !gameStateData) {
+  // Handle error state
+  if (error) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
         <Card className="p-6 max-w-md">
@@ -452,15 +488,12 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     );
   }
   
-  // --- Game Logic & Render --- 
-  // gameStateData is guaranteed to be valid GameState here
-  const gameState = optimisticGameState || gameStateData;
-  
-  // Get current player data AFTER ensuring gameState is valid
-  const currentPlayer = gameState.players.find((p: Player) => p.id === playerId);
-  
+  // At this point gameState can't be undefined because we've checked !gameStateData above
+  // and optimisticGameState is null by default, but TypeScript doesn't know that
+  // Explicitly assert that gameState is not undefined
+  const safeGameState = gameState!;
+
   // Additional check: If currentPlayer is somehow not found despite being in the game, show an error.
-  // This satisfies the linter and handles edge cases.
   if (!currentPlayer) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
@@ -477,13 +510,12 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   }
   
   // Define variables that depend on currentPlayer AFTER the check
-  const myHand = sortCards(currentPlayer.hand || []); // No optional chaining needed now
-  const isMyTurn = gameState.players[gameState.currentTurn]?.id === playerId;
+  const isMyTurn = safeGameState.players[safeGameState.currentTurn]?.id === playerId;
   const showPlayButton = selectedCards.length > 0 && isMyTurn;
   const showPassButton = isMyTurn;
-  const currentPlayCards = gameState.currentPlay;
-  const currentTurnPlayer = gameState.players[gameState.currentTurn];
-  const opponents = gameState.players.filter(p => p.id !== playerId);
+  const currentPlayCards = safeGameState.currentPlay;
+  const currentTurnPlayer = safeGameState.players[safeGameState.currentTurn];
+  const opponents = safeGameState.players.filter(p => p.id !== playerId);
   
   // Add a useEffect to clear the optimistic state when we get a new update
   useEffect(() => {
@@ -505,7 +537,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       <header className="bg-card shadow-md p-3 flex justify-between items-center">
         <div className="flex items-center">
           <h1 className="text-xl font-semibold text-primary">Odin Game</h1>
-          <RoomCodeDisplay roomCode={gameState.roomCode} className="ml-4" />
+          <RoomCodeDisplay roomCode={safeGameState.roomCode} className="ml-4" />
         </div>
         
         <div className="flex items-center gap-3">
@@ -573,8 +605,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
           <div className="previous-play mb-4">
             <p className="text-sm text-muted-foreground text-center mb-2">Previous Play</p>
             <div className="flex justify-center gap-2">
-              {gameState.previousPlay.length > 0 ? (
-                gameState.previousPlay.map(card => (
+              {safeGameState.previousPlay.length > 0 ? (
+                safeGameState.previousPlay.map(card => (
                   <CardComponent 
                     key={card.id} 
                     card={card}
@@ -598,9 +630,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
               ref={dropZoneRef}
               className="w-full h-full flex items-center justify-center"
             >
-              {gameState.currentPlay.length > 0 ? (
+              {safeGameState.currentPlay.length > 0 ? (
                 <div className="flex gap-2 justify-center">
-                  {gameState.currentPlay.map(card => (
+                  {safeGameState.currentPlay.map(card => (
                     <CardComponent 
                       key={card.id} 
                       card={card}
@@ -644,8 +676,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
               </p>
               <p className="text-sm text-muted-foreground">
                 {isMyTurn 
-                  ? gameState.currentPlay.length > 0 
-                    ? `Play ${gameState.currentPlay.length} or ${gameState.currentPlay.length + 1} cards of higher value` 
+                  ? safeGameState.currentPlay.length > 0 
+                    ? `Play ${safeGameState.currentPlay.length} or ${safeGameState.currentPlay.length + 1} cards of higher value` 
                     : "Play any cards of same color or value" 
                   : "Waiting for other player to take their turn"}
               </p>
@@ -654,7 +686,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
             <div className="game-actions flex gap-3">
               <Button
                 variant="secondary"
-                disabled={!isMyTurn || passTurnMutation.isPending || gameState.currentPlay.length === 0}
+                disabled={!isMyTurn || passTurnMutation.isPending || safeGameState.currentPlay.length === 0}
                 onClick={handlePassTurn}
                 className={`relative transition-all ${passTurnMutation.isPending ? 'opacity-70' : ''}`}
               >

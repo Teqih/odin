@@ -12,6 +12,24 @@ let currentPlayerId: string | null = null;
 let isReconnecting = false;
 
 export function connectToGameServer(gameId: string, playerId: string): WebSocket {
+  // Check for valid inputs - This helps prevent the React error and WebSocket issues
+  if (!gameId || !playerId) {
+    console.error("Cannot connect to WebSocket: Missing gameId or playerId");
+    
+    // Attempt to recover from session storage if available
+    const storedGameId = sessionStorage.getItem("gameId");
+    const storedPlayerId = sessionStorage.getItem("playerId");
+    
+    if (storedGameId && storedPlayerId) {
+      console.log("Recovered credentials from session storage");
+      gameId = storedGameId;
+      playerId = storedPlayerId;
+    } else {
+      // If we can't recover, throw an error that will be caught by the caller
+      throw new Error("Missing gameId or playerId for WebSocket connection");
+    }
+  }
+  
   // Store credentials for reconnection attempts
   currentGameId = gameId;
   currentPlayerId = playerId;
@@ -19,13 +37,18 @@ export function connectToGameServer(gameId: string, playerId: string): WebSocket
   
   if (socket && socket.readyState === WebSocket.OPEN) {
     // Already connected, send identity
-    const message: WebSocketMessage = {
-      type: "connect",
-      gameId,
-      playerId
-    };
-    socket.send(JSON.stringify(message));
-    return socket;
+    try {
+      const message: WebSocketMessage = {
+        type: "connect",
+        gameId,
+        playerId
+      };
+      socket.send(JSON.stringify(message));
+      return socket;
+    } catch (e) {
+      console.error("Error sending identity message to existing socket:", e);
+      // Fall through to create a new socket
+    }
   }
 
   // Close existing socket if it exists
@@ -38,14 +61,29 @@ export function connectToGameServer(gameId: string, playerId: string): WebSocket
     socket = null;
   }
 
-  // Fix protocol to match server port (5000)
+  // Try to determine the correct WebSocket URL by checking the page URL
+  const getCurrentHost = () => {
+    // For production deployments like koyeb where the port might be different
+    const host = window.location.hostname;
+    // For local development, use the port 5000
+    // For production, don't specify port as it's handled by the proxy
+    const isLocalhost = host === "localhost" || host === "127.0.0.1";
+    return isLocalhost ? `${host}:5000` : host;
+  };
+
+  // Fix protocol to match the current page protocol
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const host = window.location.hostname;
-  const port = "5000"; // Explicitly use port 5000 where the server is running
-  const wsUrl = `${protocol}//${host}:${port}/ws`;
+  const host = getCurrentHost();
+  const wsUrl = `${protocol}//${host}/ws`;
   
   console.log("Connecting to WebSocket at:", wsUrl);
-  socket = new WebSocket(wsUrl);
+  
+  try {
+    socket = new WebSocket(wsUrl);
+  } catch (error) {
+    console.error("Error creating WebSocket:", error);
+    throw error;
+  }
   
   socket.onopen = () => {
     console.log("WebSocket connected");
@@ -113,9 +151,24 @@ export function connectToGameServer(gameId: string, playerId: string): WebSocket
 }
 
 function attemptReconnect() {
+  // Try to recover stored game ID and player ID if they're missing
   if (!currentGameId || !currentPlayerId) {
-    console.error("Cannot reconnect - missing game ID or player ID");
-    return;
+    const storedGameId = sessionStorage.getItem("gameId");
+    const storedPlayerId = sessionStorage.getItem("playerId");
+    
+    if (storedGameId && storedPlayerId) {
+      currentGameId = storedGameId;
+      currentPlayerId = storedPlayerId;
+      console.log("Recovered credentials from session storage for reconnection");
+    } else {
+      console.error("Cannot reconnect - missing game ID or player ID and nothing in session storage");
+      // Notify UI about the connection issue
+      messageHandlers.forEach(handler => handler({
+        type: "error",
+        error: "Connection lost. Missing game or player information. Please refresh the page."
+      }));
+      return;
+    }
   }
   
   if (isReconnecting) {
@@ -144,7 +197,14 @@ function attemptReconnect() {
     
     if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
       // Try to reconnect
-      connectToGameServer(currentGameId!, currentPlayerId!);
+      try {
+        connectToGameServer(currentGameId!, currentPlayerId!);
+      } catch (error) {
+        console.error("Error during reconnection attempt:", error);
+        // Schedule another attempt
+        isReconnecting = false;
+        attemptReconnect();
+      }
     } else {
       console.error("Maximum reconnection attempts reached. Giving up.");
       // Notify UI that connection is lost permanently
@@ -172,7 +232,11 @@ export function disconnectFromGameServer() {
   
   if (socket) {
     // Use code 1000 for normal closure
-    socket.close(1000, "User disconnected");
+    try {
+      socket.close(1000, "User disconnected");
+    } catch (e) {
+      console.error("Error closing socket during disconnect:", e);
+    }
     socket = null;
   }
   
@@ -182,13 +246,31 @@ export function disconnectFromGameServer() {
 
 // Manually trigger a reconnection attempt
 export function forceReconnect() {
-  if (currentGameId && currentPlayerId) {
-    // Reset reconnection attempts
-    reconnectAttempts = 0;
-    isReconnecting = false;
+  // Try to recover stored game ID and player ID if they're missing
+  if (!currentGameId || !currentPlayerId) {
+    const storedGameId = sessionStorage.getItem("gameId");
+    const storedPlayerId = sessionStorage.getItem("playerId");
     
-    // Attempt to reconnect
+    if (storedGameId && storedPlayerId) {
+      currentGameId = storedGameId;
+      currentPlayerId = storedPlayerId;
+    } else {
+      console.error("Cannot force reconnect - missing game ID or player ID");
+      return;
+    }
+  }
+  
+  // Reset reconnection attempts
+  reconnectAttempts = 0;
+  isReconnecting = false;
+  
+  // Attempt to reconnect
+  try {
     connectToGameServer(currentGameId, currentPlayerId);
+  } catch (error) {
+    console.error("Error during forced reconnection:", error);
+    // Try the reconnection logic as a fallback
+    attemptReconnect();
   }
 }
 
@@ -215,6 +297,16 @@ export function sendMessage(message: WebSocketMessage) {
     // Try to reconnect since the socket isn't ready
     if (currentGameId && currentPlayerId) {
       attemptReconnect();
+    } else {
+      // Try to recover from session storage
+      const storedGameId = sessionStorage.getItem("gameId");
+      const storedPlayerId = sessionStorage.getItem("playerId");
+      
+      if (storedGameId && storedPlayerId) {
+        currentGameId = storedGameId;
+        currentPlayerId = storedPlayerId;
+        attemptReconnect();
+      }
     }
   }
 }
