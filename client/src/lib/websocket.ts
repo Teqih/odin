@@ -275,9 +275,22 @@ export function forceReconnect() {
 }
 
 export function addMessageHandler(handler: (message: WebSocketMessage) => void) {
+  // Check if this handler is already registered to avoid duplicates
+  const existingIndex = messageHandlers.findIndex(h => h === handler);
+  if (existingIndex !== -1) {
+    // Remove the existing one first to prevent duplicates
+    messageHandlers.splice(existingIndex, 1);
+  }
+  
+  // Add the handler
   messageHandlers.push(handler);
+  
+  // Return a cleanup function
   return () => {
-    messageHandlers = messageHandlers.filter(h => h !== handler);
+    const index = messageHandlers.indexOf(handler);
+    if (index !== -1) {
+      messageHandlers.splice(index, 1);
+    }
   };
 }
 

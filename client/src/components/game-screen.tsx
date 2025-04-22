@@ -546,17 +546,35 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   };
   
   // Function to handle new chat messages and count them when the chat is closed
-  const handleChatMessage = (message: WebSocketMessage) => {
+  const handleChatMessage = useRef((message: WebSocketMessage) => {
     if (message.type === "chat_message" && !isChatOpen && message.chatMessage?.playerId !== playerId) {
       setUnreadCount(prev => prev + 1);
     }
-  };
+  });
+  
+  // Update the handler when dependencies change
+  useEffect(() => {
+    handleChatMessage.current = (message: WebSocketMessage) => {
+      if (message.type === "chat_message" && !isChatOpen && message.chatMessage?.playerId !== playerId) {
+        setUnreadCount(prev => prev + 1);
+      }
+    };
+  }, [isChatOpen, playerId]);
   
   // Register the chat message handler for counting unread messages
   useEffect(() => {
-    const cleanup = addMessageHandler(handleChatMessage);
+    const wrappedHandler = (message: WebSocketMessage) => {
+      handleChatMessage.current(message);
+    };
+    
+    const cleanup = addMessageHandler(wrappedHandler);
     return () => cleanup();
-  }, [isChatOpen, playerId]);
+  }, []);
+  
+  // Function to handle unread count updates from the ChatPanel component
+  const handleUnreadCountChange = (count: number) => {
+    setUnreadCount(count);
+  };
   
   // Handle loading state
   if (isLoading || !gameStateData) {
@@ -940,6 +958,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
           playerName={currentPlayer.name}
           open={isChatOpen}
           onClose={() => setIsChatOpen(false)}
+          onUnreadCount={handleUnreadCountChange}
         />
       )}
     </div>

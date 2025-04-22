@@ -14,6 +14,7 @@ interface ChatPanelProps {
   playerName: string;
   open?: boolean;
   onClose?: () => void;
+  onUnreadCount?: (count: number) => void;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({ 
@@ -21,7 +22,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   playerId, 
   playerName,
   open = false,
-  onClose
+  onClose,
+  onUnreadCount
 }) => {
   const [isOpen, setIsOpen] = useState(open);
   const [message, setMessage] = useState("");
@@ -29,19 +31,37 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const [unreadCount, setUnreadCount] = useState(0);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const lastViewedRef = useRef<number>(Date.now());
+  const processedMessagesRef = useRef<Set<string>>(new Set());
+  const messageHandlerRef = useRef<(() => void) | null>(null);
 
   // Handle messages from WebSocket
   useEffect(() => {
+    // Clear any previous message handler
+    if (messageHandlerRef.current) {
+      messageHandlerRef.current();
+      messageHandlerRef.current = null;
+    }
+
     // Message handler for chat messages
     const handleChatMessage = (message: WebSocketMessage) => {
       if (message.type === "chat_message" && message.chatMessage) {
-        setChatMessages(prev => [...prev, message.chatMessage!]);
-        
-        // If the chat is closed and message is from someone else, increment unread count
-        if (!isOpen && message.chatMessage.playerId !== playerId) {
-          setUnreadCount(prev => prev + 1);
+        // Check if this message ID has already been processed
+        if (!processedMessagesRef.current.has(message.chatMessage.id)) {
+          processedMessagesRef.current.add(message.chatMessage.id);
+          setChatMessages(prev => [...prev, message.chatMessage!]);
+          
+          // If the chat is closed and message is from someone else, increment unread count
+          if (!isOpen && message.chatMessage.playerId !== playerId) {
+            const newCount = unreadCount + 1;
+            setUnreadCount(newCount);
+            if (onUnreadCount) {
+              onUnreadCount(newCount);
+            }
+          }
         }
       } else if (message.type === "chat_history" && message.chatHistory) {
+        // For chat history, we reset our processed set and replace all messages
+        processedMessagesRef.current = new Set(message.chatHistory.map(msg => msg.id));
         setChatMessages(message.chatHistory);
         
         // Calculate unread messages based on last viewed timestamp
@@ -49,13 +69,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           const unreadMessages = message.chatHistory.filter(
             msg => msg.timestamp > lastViewedRef.current && msg.playerId !== playerId
           );
-          setUnreadCount(unreadMessages.length);
+          const newCount = unreadMessages.length;
+          setUnreadCount(newCount);
+          if (onUnreadCount) {
+            onUnreadCount(newCount);
+          }
         }
       }
     };
 
     // Add the chat message handler
-    addMessageHandler(handleChatMessage);
+    messageHandlerRef.current = addMessageHandler(handleChatMessage);
 
     // Request chat history on mount
     sendMessage({
@@ -65,9 +89,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     });
 
     return () => {
-      // No cleanup needed as the handler will be cleared when the component unmounts
+      // Clean up handler on unmount
+      if (messageHandlerRef.current) {
+        messageHandlerRef.current();
+        messageHandlerRef.current = null;
+      }
     };
-  }, [gameId, playerId, isOpen]);
+  }, [gameId, playerId, isOpen, unreadCount, onUnreadCount]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -83,9 +111,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     // When opening chat, clear unread count and update last viewed time
     if (open) {
       setUnreadCount(0);
+      if (onUnreadCount) {
+        onUnreadCount(0);
+      }
       lastViewedRef.current = Date.now();
     }
-  }, [open]);
+  }, [open, onUnreadCount]);
 
   const handleClose = () => {
     setIsOpen(false);
@@ -122,26 +153,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     }
   };
 
-  // Render minimized chat button if not open
+  // Don't render anything if chat is not open
   if (!isOpen) {
-    return (
-      <Button 
-        className="fixed bottom-4 right-4 rounded-full p-3 h-12 w-12 shadow-lg z-50 relative"
-        onClick={() => {
-          setIsOpen(true);
-          setUnreadCount(0);
-          lastViewedRef.current = Date.now();
-        }}
-        variant="default"
-      >
-        <MessageCircle size={24} />
-        {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full h-5 min-w-5 flex items-center justify-center text-xs font-medium">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
-      </Button>
-    );
+    return null;
   }
 
   return (
