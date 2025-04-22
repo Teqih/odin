@@ -101,7 +101,12 @@ export type WebSocketMessageType =
   | "pong"
   | "error"
   | "chat_message"
-  | "chat_history";
+  | "chat_history"
+  | "voice_message"
+  | "voice_message_received";
+
+// Message type enum
+export type MessageType = "text" | "voice";
 
 // Add a ChatMessage interface
 export interface ChatMessage {
@@ -111,6 +116,9 @@ export interface ChatMessage {
   playerName: string;
   message: string;
   timestamp: number;
+  messageType: MessageType;
+  audioUrl?: string;
+  duration?: number;
 }
 
 export interface WebSocketMessage {
@@ -121,4 +129,5 @@ export interface WebSocketMessage {
   error?: string;
   chatMessage?: ChatMessage;
   chatHistory?: ChatMessage[];
+  audioData?: ArrayBuffer;
 }

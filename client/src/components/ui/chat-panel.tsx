@@ -2,11 +2,15 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, MessageCircle, X } from "lucide-react";
+import { Send, MessageCircle, X, Mic, StopCircle, Loader2 } from "lucide-react";
 import { sendMessage, addMessageHandler, addTypedMessageHandler } from "@/lib/websocket";
-import { ChatMessage, WebSocketMessage } from "@shared/schema";
+import { ChatMessage, WebSocketMessage, MessageType } from "@shared/schema";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import { VoiceMessage } from "@/components/ui/voice-message";
+import axios from "axios";
+import "@/styles/voice-recorder.css";
 
 interface ChatPanelProps {
   gameId: string;
@@ -29,10 +33,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const [message, setMessage] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const lastViewedRef = useRef<number>(Date.now());
   const processedMessagesRef = useRef<Set<string>>(new Set());
   const messageHandlerRef = useRef<(() => void) | null>(null);
+  
+  // Audio recorder hook
+  const { 
+    isRecording, 
+    duration, 
+    audioBlob, 
+    error: recorderError,
+    startRecording, 
+    stopRecording,
+    clearRecording
+  } = useAudioRecorder();
 
   // Handle messages from WebSocket
   useEffect(() => {
@@ -118,6 +134,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     }
   }, [open, onUnreadCount]);
 
+  // Handle voice recording errors
+  useEffect(() => {
+    if (recorderError) {
+      // Display error to user
+      console.error('Recording error:', recorderError);
+    }
+  }, [recorderError]);
+
   const handleClose = () => {
     setIsOpen(false);
     // Set last viewed time when closing
@@ -139,11 +163,49 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         playerId,
         playerName,
         message: message.trim(),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        messageType: "text"
       }
     });
 
     setMessage("");
+  };
+
+  const handleRecordToggle = async () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      await startRecording();
+    }
+  };
+
+  const handleSendVoiceMessage = async () => {
+    if (!audioBlob) return;
+    
+    try {
+      setIsUploading(true);
+      
+      // Create form data for upload
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'voice-message.webm');
+      formData.append('playerId', playerId);
+      formData.append('playerName', playerName);
+      formData.append('duration', duration.toString());
+      
+      // Upload the voice message
+      await axios.post(`/api/games/${gameId}/voice-message`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      // Clear recording after successful upload
+      clearRecording();
+    } catch (error) {
+      console.error('Error uploading voice message:', error);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -157,6 +219,42 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   if (!isOpen) {
     return null;
   }
+
+  // Render message based on type
+  const renderMessage = (msg: ChatMessage) => {
+    const isCurrentUser = msg.playerId === playerId;
+    
+    if (msg.messageType === "voice") {
+      return (
+        <VoiceMessage 
+          audioUrl={msg.audioUrl!}
+          duration={msg.duration || 0}
+          isCurrentUser={isCurrentUser}
+          timestamp={msg.timestamp}
+        />
+      );
+    }
+    
+    // Default to text message
+    return (
+      <div 
+        className={cn(
+          "max-w-[85%] rounded-lg p-2.5",
+          isCurrentUser 
+            ? "bg-primary text-primary-foreground ml-auto" 
+            : "bg-secondary text-secondary-foreground"
+        )}
+      >
+        {!isCurrentUser && (
+          <div className="font-semibold text-xs mb-1">{msg.playerName}</div>
+        )}
+        <div>{msg.message}</div>
+        <div className="text-xs opacity-70 text-right mt-1">
+          {format(new Date(msg.timestamp), 'HH:mm')}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Card className={cn(
@@ -190,26 +288,55 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           </div>
         ) : (
           chatMessages.map(msg => (
-            <div 
-              key={msg.id}
-              className={cn(
-                "max-w-[85%] rounded-lg p-2.5",
-                msg.playerId === playerId 
-                  ? "bg-primary text-primary-foreground ml-auto" 
-                  : "bg-secondary text-secondary-foreground"
-              )}
-            >
-              {msg.playerId !== playerId && (
-                <div className="font-semibold text-xs mb-1">{msg.playerName}</div>
-              )}
-              <div>{msg.message}</div>
-              <div className="text-xs opacity-70 text-right mt-1">
-                {format(new Date(msg.timestamp), 'HH:mm')}
-              </div>
+            <div key={msg.id}>
+              {renderMessage(msg)}
             </div>
           ))
         )}
       </div>
+
+      {/* Voice recording preview */}
+      {(isRecording || audioBlob) && (
+        <div className="p-3 border-t flex items-center gap-2">
+          {isRecording ? (
+            <div className="flex items-center gap-2 text-red-500">
+              <div className="voice-recorder-wave">
+                <div className="bar"></div>
+                <div className="bar"></div>
+                <div className="bar"></div>
+                <div className="bar"></div>
+                <div className="bar"></div>
+              </div>
+              <span className="text-sm">Recording... {duration.toFixed(1)}s</span>
+            </div>
+          ) : (
+            <div className="flex-1 text-sm">Voice message recorded ({duration.toFixed(1)}s)</div>
+          )}
+          
+          {audioBlob && !isRecording && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleSendVoiceMessage}
+              disabled={isUploading}
+            >
+              {isUploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Send"
+              )}
+            </Button>
+          )}
+          
+          <Button 
+            variant="outline"
+            size="sm"
+            onClick={isRecording ? stopRecording : clearRecording}
+          >
+            {isRecording ? "Stop" : "Cancel"}
+          </Button>
+        </div>
+      )}
 
       {/* Chat input */}
       <div className="p-3 border-t flex gap-2">
@@ -219,10 +346,27 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           className="flex-1"
+          disabled={isRecording || !!audioBlob}
         />
+        
+        {/* Record button */}
+        <Button 
+          onClick={handleRecordToggle}
+          size="icon"
+          variant={isRecording ? "destructive" : "outline"}
+          disabled={!!audioBlob && !isRecording}
+        >
+          {isRecording ? (
+            <StopCircle size={18} />
+          ) : (
+            <Mic size={18} />
+          )}
+        </Button>
+        
+        {/* Send text message button */}
         <Button 
           onClick={handleSendMessage}
-          disabled={!message.trim()}
+          disabled={!message.trim() || isRecording || !!audioBlob}
           size="icon"
         >
           <Send size={18} />

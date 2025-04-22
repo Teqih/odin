@@ -18,6 +18,9 @@ import {
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { filterGameStateForPlayer } from "./game";
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 // Map of connected clients by game ID and player ID
 const connections = new Map<string, Map<string, WebSocket>>();
@@ -31,6 +34,14 @@ let pingInterval: NodeJS.Timeout | null = null;
 let playerActivityInterval: NodeJS.Timeout | null = null;
 
 const CONNECTION_TIMEOUT = 45000; // 45 seconds of inactivity before considering a player disconnected
+
+// Configure multer for voice message uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit for voice messages
+  },
+});
 
 // Send game state update to all players in a game
 function broadcastGameState(gameId: string, gameState: GameState) {
@@ -373,11 +384,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               
               // Save and broadcast the chat message
+              const messageType = message.chatMessage.messageType || 'text';
               const chatMessage = await storage.saveChatMessage(
                 message.gameId,
                 message.playerId,
                 player.name,
-                message.chatMessage.message
+                message.chatMessage.message,
+                messageType,
+                message.chatMessage.audioUrl,
+                message.chatMessage.duration
               );
               
               await broadcastChatMessage(chatMessage);
@@ -742,6 +757,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Start new round error:', error);
       res.status(500).json({ message: 'Failed to start new round' });
+    }
+  });
+
+  // Voice message upload endpoint
+  app.post('/api/games/:gameId/voice-message', upload.single('audio'), async (req, res) => {
+    try {
+      const gameId = req.params.gameId;
+      const playerId = req.body.playerId;
+      const playerName = req.body.playerName;
+      const duration = parseFloat(req.body.duration || '0');
+      
+      if (!gameId || !playerId || !req.file) {
+        return res.status(400).json({ error: 'Missing required parameters' });
+      }
+      
+      // Get the game to verify it exists
+      const game = await storage.getGame(gameId);
+      if (!game) {
+        return res.status(404).json({ error: 'Game not found' });
+      }
+      
+      // Store the audio file
+      const audioId = await storage.storeVoiceMessage(gameId, playerId, req.file.buffer);
+      
+      // Create a chat message for this voice message
+      const chatMessage = await storage.saveChatMessage(
+        gameId,
+        playerId,
+        playerName,
+        'Voice message', // Placeholder text for non-supporting clients
+        'voice',
+        `/api/voice-messages/${audioId}`,
+        duration
+      );
+      
+      // Broadcast the message to all players
+      await broadcastChatMessage(chatMessage);
+      
+      return res.status(200).json({ success: true, messageId: chatMessage.id });
+    } catch (error) {
+      console.error('Error uploading voice message:', error);
+      return res.status(500).json({ error: 'Server error' });
+    }
+  });
+  
+  // Voice message download endpoint
+  app.get('/api/voice-messages/:audioId', async (req, res) => {
+    try {
+      const audioId = req.params.audioId;
+      
+      // Get the audio data from storage
+      const audioData = (storage as any).audioMessages.get(audioId);
+      
+      if (!audioData) {
+        return res.status(404).json({ error: 'Voice message not found' });
+      }
+      
+      // Set headers for audio content
+      res.set('Content-Type', 'audio/webm');
+      res.set('Content-Length', audioData.length.toString());
+      
+      // Send the audio data
+      return res.send(audioData);
+    } catch (error) {
+      console.error('Error retrieving voice message:', error);
+      return res.status(500).json({ error: 'Server error' });
     }
   });
 

@@ -6,7 +6,8 @@ import {
   Card,
   CardColor,
   CardValue,
-  ChatMessage
+  ChatMessage,
+  MessageType
 } from "@shared/schema";
 import { nanoid } from "nanoid";
 import { startNewRound as startNewRoundLogic } from "./game"; // Import game logic
@@ -33,7 +34,8 @@ export interface IStorage {
   getAllActiveGames(): Promise<GameState[]>;
   
   // Chat methods
-  saveChatMessage(gameId: string, playerId: string, playerName: string, message: string): Promise<ChatMessage>;
+  saveChatMessage(gameId: string, playerId: string, playerName: string, message: string, messageType?: MessageType, audioUrl?: string, duration?: number): Promise<ChatMessage>;
+  storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer): Promise<string>;
   getChatMessages(gameId: string): Promise<ChatMessage[]>;
   clearChatMessages(gameId: string): Promise<void>;
 }
@@ -55,13 +57,16 @@ export class MemStorage implements IStorage {
   private games: Map<string, GameState>;
   private roomCodes: Map<string, string>; // Maps room codes to game IDs
   private currentId: number;
-  private chatMessages = new Map<string, ChatMessage[]>();
+  private chatMessages: Map<string, ChatMessage[]>;
+  private audioMessages: Map<string, Buffer>; // To store audio message data
 
   constructor() {
     this.users = new Map();
     this.games = new Map();
     this.roomCodes = new Map();
     this.currentId = 1;
+    this.chatMessages = new Map();
+    this.audioMessages = new Map();
   }
 
   // User methods
@@ -525,7 +530,15 @@ export class MemStorage implements IStorage {
   }
 
   // Chat methods
-  async saveChatMessage(gameId: string, playerId: string, playerName: string, message: string): Promise<ChatMessage> {
+  async saveChatMessage(
+    gameId: string, 
+    playerId: string, 
+    playerName: string, 
+    message: string,
+    messageType: MessageType = "text",
+    audioUrl?: string,
+    duration?: number
+  ): Promise<ChatMessage> {
     if (!this.chatMessages.has(gameId)) {
       this.chatMessages.set(gameId, []);
     }
@@ -536,7 +549,10 @@ export class MemStorage implements IStorage {
       playerId,
       playerName,
       message,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      messageType,
+      audioUrl,
+      duration
     };
     
     this.chatMessages.get(gameId)!.push(chatMessage);
@@ -549,7 +565,22 @@ export class MemStorage implements IStorage {
     
     return chatMessage;
   }
-  
+
+  async storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer): Promise<string> {
+    const audioId = `voice-${gameId}-${playerId}-${Date.now()}`;
+    this.audioMessages.set(audioId, audioData);
+    
+    // Set a TTL for audio messages (7 days)
+    setTimeout(() => {
+      if (this.audioMessages.has(audioId)) {
+        this.audioMessages.delete(audioId);
+        console.log(`Deleted expired voice message: ${audioId}`);
+      }
+    }, 7 * 24 * 60 * 60 * 1000);
+    
+    return audioId;
+  }
+
   async getChatMessages(gameId: string): Promise<ChatMessage[]> {
     return this.chatMessages.get(gameId) || [];
   }
