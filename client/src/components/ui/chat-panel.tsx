@@ -104,8 +104,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       playerId
     });
 
+    // Clean up handler on unmount or when dependencies change
     return () => {
-      // Clean up handler on unmount
       if (messageHandlerRef.current) {
         messageHandlerRef.current();
         messageHandlerRef.current = null;

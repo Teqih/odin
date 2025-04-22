@@ -1,9 +1,12 @@
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import LanguageSelector from "@/components/ui/language-selector";
 
 const HomeScreen: React.FC = () => {
   const [, navigate] = useLocation();
+  const { t } = useTranslation();
   
   const handleCreateGame = () => {
     navigate("/create");
@@ -15,10 +18,14 @@ const HomeScreen: React.FC = () => {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
+      <div className="absolute top-4 right-4">
+        <LanguageSelector />
+      </div>
+      
       <div className="text-center mb-8">
-        <h1 className="text-4xl md:text-6xl font-bold text-primary mb-4">Odin Card Game</h1>
+        <h1 className="text-4xl md:text-6xl font-bold text-primary mb-4">{t('app.title')}</h1>
         <p className="text-lg text-muted-foreground max-w-md mx-auto">
-          A turn-based multiplayer card game where strategy meets luck.
+          {t('app.description')}
         </p>
       </div>
       
@@ -36,7 +43,7 @@ const HomeScreen: React.FC = () => {
           >
             <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
           </svg>
-          Create Game
+          {t('button.createGame')}
         </Button>
         
         <Button 
@@ -53,21 +60,21 @@ const HomeScreen: React.FC = () => {
           >
             <path fillRule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2h-2.22l.123.489.804.804A1 1 0 0113 18H7a1 1 0 01-.707-1.707l.804-.804L7.22 15H5a2 2 0 01-2-2V5zm5.771 7H5V5h10v7H8.771z" clipRule="evenodd" />
           </svg>
-          Join Game
+          {t('button.joinGame')}
         </Button>
       </div>
       
       <Card className="mt-12 max-w-md w-full">
         <CardContent className="pt-6">
-          <h2 className="text-2xl font-semibold mb-4">How to Play</h2>
+          <h2 className="text-2xl font-semibold mb-4">{t('howToPlay.title')}</h2>
           <ul className="list-disc pl-5 space-y-2">
-            <li>Players are dealt cards from a 54-card deck (6 colors, numbered 1-9). Up to 6 players get 9 cards each, larger games get fewer cards.</li>
-            <li>On your turn, play one or more cards of the same number or color.</li>
-            <li>Other players must match with higher value cards or pass.</li>
-            <li>After a play, pick up one card from previous play.</li>
-            <li>First to empty their hand wins the round.</li>
-            <li>Score 1 point per card left in hand.</li>
-            <li>Game ends when a player reaches the point limit.</li>
+            <li>{t('howToPlay.rule1')}</li>
+            <li>{t('howToPlay.rule2')}</li>
+            <li>{t('howToPlay.rule3')}</li>
+            <li>{t('howToPlay.rule4')}</li>
+            <li>{t('howToPlay.rule5')}</li>
+            <li>{t('howToPlay.rule6')}</li>
+            <li>{t('howToPlay.rule7')}</li>
           </ul>
         </CardContent>
       </Card>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, useRoute } from "wouter";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import RoomCodeDisplay from "@/components/ui/room-code-display";
@@ -16,11 +17,20 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { connectToGameServer, addMessageHandler } from "@/lib/websocket";
 import { GameState, Player, WebSocketMessage } from "@shared/schema";
+import { ChatButton } from "@/components/ui/chat-button";
+import LanguageSelector from "@/components/ui/language-selector";
+
+interface PlayerItem {
+  id: string;
+  name: string;
+  isHost: boolean;
+}
 
 const LobbyScreen: React.FC = () => {
   const [, navigate] = useLocation();
   const [, params] = useRoute("/lobby/:gameId");
   const { toast } = useToast();
+  const { t } = useTranslation();
   
   // Get stored game info
   const gameId = params?.gameId || sessionStorage.getItem("gameId") || "";
@@ -31,12 +41,15 @@ const LobbyScreen: React.FC = () => {
   const [isHost, setIsHost] = useState(false);
   
   // Fetch game state
-  const { data: gameState, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery<any>({
     queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`],
     enabled: !!gameId && !!playerId,
     refetchInterval: 5000,
     refetchIntervalInBackground: true
   });
+  
+  // Type-safe reference to game state
+  const gameState = data as GameState | undefined;
   
   // Start game mutation
   const startGameMutation = useMutation({
@@ -48,8 +61,8 @@ const LobbyScreen: React.FC = () => {
     },
     onError: (error) => {
       toast({
-        title: "Failed to start game",
-        description: error instanceof Error ? error.message : "Please try again",
+        title: t('create.failedToCreate'),
+        description: error instanceof Error ? error.message : t('create.tryAgain'),
         variant: "destructive"
       });
     }
@@ -80,7 +93,7 @@ const LobbyScreen: React.FC = () => {
   }, [gameId, playerId, navigate]);
   
   useEffect(() => {
-    if (gameState) {
+    if (gameState && gameState.players) {
       // Check if player is host
       const player = gameState.players.find(p => p.id === playerId);
       setIsHost(!!player?.isHost);
@@ -103,10 +116,10 @@ const LobbyScreen: React.FC = () => {
   };
   
   const handleStartGame = () => {
-    if (gameState && gameState.players.length < 2) {
+    if (gameState && gameState.players && gameState.players.length < 2) {
       toast({
-        title: "Not enough players",
-        description: "You need at least 2 players to start the game",
+        title: t('game.notEnoughPlayers'),
+        description: t('game.needTwoPlayers'),
         variant: "destructive"
       });
       return;
@@ -120,7 +133,7 @@ const LobbyScreen: React.FC = () => {
       <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6 text-center">
-            <div className="animate-pulse">Loading lobby...</div>
+            <div className="animate-pulse">{t('game.loading')}</div>
           </CardContent>
         </Card>
       </div>
@@ -132,12 +145,12 @@ const LobbyScreen: React.FC = () => {
       <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6 text-center">
-            <h2 className="text-xl font-semibold mb-4">Error Loading Lobby</h2>
+            <h2 className="text-xl font-semibold mb-4">{t('game.errorTitle')}</h2>
             <p className="text-muted-foreground mb-4">
-              Unable to join the game lobby. The game may no longer exist.
+              {t('game.errorMessage')}
             </p>
             <Button onClick={() => navigate("/")}>
-              Back to Home
+              {t('game.backToHome')}
             </Button>
           </CardContent>
         </Card>
@@ -145,22 +158,28 @@ const LobbyScreen: React.FC = () => {
     );
   }
   
+  const players = gameState.players || [];
+  
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
+      <div className="absolute top-4 right-4">
+        <LanguageSelector />
+      </div>
+      
       <Card className="max-w-md w-full">
         <CardContent className="pt-6">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-semibold">Game Lobby</h2>
+            <h2 className="text-2xl font-semibold">{t('game.lobby')}</h2>
             <RoomCodeDisplay roomCode={roomCode} />
           </div>
           
           <div className="mb-6">
             <div className="flex items-center mb-3">
               <Users className="h-5 w-5 mr-2" />
-              <h3 className="text-lg font-medium">Players</h3>
+              <h3 className="text-lg font-medium">{t('game.players')}</h3>
             </div>
             <ul className="bg-muted rounded-lg p-2">
-              {gameState.players.map((player) => (
+              {players.map((player) => (
                 <li 
                   key={player.id} 
                   className="flex items-center justify-between p-2 border-b last:border-b-0 border-background"
@@ -171,12 +190,12 @@ const LobbyScreen: React.FC = () => {
                     </span>
                     <span>
                       {player.name}
-                      {player.id === playerId && " (You)"}
+                      {player.id === playerId && ` (${t('game.playerYou')})`}
                     </span>
                   </div>
                   {player.isHost && (
                     <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded-full">
-                      Host
+                      {t('game.playerHost')}
                     </span>
                   )}
                 </li>
@@ -184,64 +203,47 @@ const LobbyScreen: React.FC = () => {
             </ul>
           </div>
           
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center">
-                <Settings className="h-5 w-5 mr-2" />
-                <h3 className="text-lg font-medium">Game Settings</h3>
-              </div>
-              {isHost && (
-                <span className="text-xs text-muted-foreground">(Host only)</span>
-              )}
-            </div>
-            <div className="bg-muted rounded-lg p-4">
-              <div className="flex justify-between items-center mb-2">
-                <span>Point Limit:</span>
-                <span>{gameState.pointLimit} points</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Players:</span>
-                <span>{gameState.players.length}/27</span>
-              </div>
-            </div>
+          <div className="text-center mb-6">
+            <p className="text-muted-foreground">{t('game.waitingForPlayers')}</p>
           </div>
           
-          <div className="flex flex-col gap-3">
-            <Button
-              className="w-full"
-              onClick={handleStartGame}
-              disabled={!isHost || startGameMutation.isPending || gameState.players.length < 2}
-            >
-              <Play className="mr-2 h-5 w-5" />
-              {startGameMutation.isPending ? "Starting..." : "Start Game"}
-            </Button>
+          <div className="flex gap-3">
+            {isHost ? (
+              <Button 
+                className="flex-1" 
+                onClick={handleStartGame} 
+                disabled={startGameMutation.isPending}
+              >
+                <Play className="mr-2 h-4 w-4" />
+                {t('game.startGame')}
+              </Button>
+            ) : (
+              <Button variant="outline" className="flex-1" disabled>
+                <Play className="mr-2 h-4 w-4" />
+                {t('game.waitingTurn')}
+              </Button>
+            )}
             
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => {
-                navigator.clipboard.writeText(roomCode);
-                toast({
-                  title: "Copied!",
-                  description: "Room code copied to clipboard"
-                });
-              }}
-            >
-              <Share2 className="mr-2 h-5 w-5" />
-              Copy Room Code
-            </Button>
-            
-            <Button
-              variant="ghost"
-              className="w-full text-destructive hover:text-destructive"
+            <Button 
+              variant="outline" 
+              className="flex-1"
               onClick={handleLeaveLobby}
             >
-              <LogOut className="mr-2 h-5 w-5" />
-              Leave Lobby
+              <LogOut className="mr-2 h-4 w-4" />
+              {t('game.leaveLobby')}
             </Button>
           </div>
         </CardContent>
       </Card>
+      
+      {gameId && playerId && playerName && (
+        <ChatButton
+          gameId={gameId}
+          playerId={playerId}
+          playerName={playerName}
+          position="bottom-right"
+        />
+      )}
     </div>
   );
 };

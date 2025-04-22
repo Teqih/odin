@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,9 +8,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import LanguageSelector from "@/components/ui/language-selector";
 
 const JoinGameScreen: React.FC = () => {
   const [, navigate] = useLocation();
+  const { t } = useTranslation();
   const { toast } = useToast();
   
   const [playerName, setPlayerName] = useState("");
@@ -19,12 +22,12 @@ const JoinGameScreen: React.FC = () => {
   
   const handleJoinGame = async () => {
     if (!playerName.trim()) {
-      setError("Please enter your name");
+      setError(t('join.nameRequired'));
       return;
     }
     
     if (!roomCode.trim()) {
-      setError("Please enter a room code");
+      setError(t('join.codeRequired'));
       return;
     }
     
@@ -51,9 +54,9 @@ const JoinGameScreen: React.FC = () => {
     } catch (error) {
       console.error("Failed to join game:", error);
       if (error instanceof Error && error.message.includes("Game is full")) {
-        setError("Game is full (maximum 27 players)");
+        setError(t('join.gameFull'));
       } else {
-        setError("Invalid room code or game not found");
+        setError(t('join.invalidCode'));
       }
     } finally {
       setIsJoining(false);
@@ -66,15 +69,19 @@ const JoinGameScreen: React.FC = () => {
   
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
+      <div className="absolute top-4 right-4">
+        <LanguageSelector />
+      </div>
+      
       <Card className="max-w-md w-full">
         <CardContent className="pt-6">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-semibold">Join Game</h2>
+            <h2 className="text-2xl font-semibold">{t('join.title')}</h2>
             <Button 
               variant="ghost" 
               size="sm" 
               onClick={handleBackToHome}
-              aria-label="Back"
+              aria-label={t('join.back')}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
@@ -82,14 +89,14 @@ const JoinGameScreen: React.FC = () => {
           
           <div className="mb-6">
             <Label htmlFor="joinPlayerName" className="block text-sm mb-1">
-              Your Name
+              {t('create.nameLabel')}
             </Label>
             <Input
               id="joinPlayerName"
               type="text"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="Enter your name"
+              placeholder={t('create.namePlaceholder')}
               className="w-full"
               maxLength={20}
             />
@@ -97,14 +104,14 @@ const JoinGameScreen: React.FC = () => {
           
           <div className="mb-6">
             <Label htmlFor="joinRoomCode" className="block text-sm mb-1">
-              Room Code
+              {t('join.roomCode')}
             </Label>
             <Input
               id="joinRoomCode"
               type="text"
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              placeholder="Enter room code"
+              placeholder={t('join.roomCodePlaceholder')}
               className="w-full uppercase"
               maxLength={6}
             />
@@ -122,7 +129,7 @@ const JoinGameScreen: React.FC = () => {
             onClick={handleJoinGame}
             disabled={isJoining}
           >
-            {isJoining ? "Joining..." : "Join Game Room"}
+            {isJoining ? t('join.joining') : t('join.joinGame')}
           </Button>
         </CardContent>
       </Card>

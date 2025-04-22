@@ -12,6 +12,7 @@ interface RoundEndModalProps {
   onStartNextRound: () => void;
   isLoading?: boolean;
   isHost: boolean;
+  // Don't add any chat-related props here - we'll use the existing ChatButton that's already visible in the GameScreen
 }
 
 const RoundEndModal: React.FC<RoundEndModalProps> = ({
@@ -25,7 +26,7 @@ const RoundEndModal: React.FC<RoundEndModalProps> = ({
   const sortedScores = [...scores].sort((a, b) => a.cards - b.cards);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
       <div className="bg-card rounded-lg shadow-lg p-6 max-w-md w-full mx-auto">
         <div className="text-center mb-6">
           <span className="inline-block p-3 bg-success/10 text-success rounded-full mb-2">

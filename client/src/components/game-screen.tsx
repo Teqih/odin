@@ -26,10 +26,20 @@ import {
   HelpCircle,
   Send,
   AlertCircle,
-  MessageCircle
+  MessageCircle,
+  ArrowLeft, 
+  ShieldAlert, 
+  Info, 
+  Check, 
+  ChevronsRight, 
+  Play, 
+  Wifi, 
+  WifiOff,
+  RefreshCw
 } from "lucide-react";
 import { isValidCardSet, sortCards } from "@/lib/card-utils";
 import ChatPanel from "@/components/ui/chat-panel";
+import { ChatButton } from "@/components/ui/chat-button";
 
 const playerColors = [
   "#e53935", // red
@@ -75,10 +85,6 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   // Add a state for disconnection notification
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "connecting" | "disconnected" | "reconnecting">("connecting");
   const [showDisconnectedAlert, setShowDisconnectedAlert] = useState(false);
-
-  // Add this state for managing chat panel visibility
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
 
   // Fetch game state
   const { data: gameStateData, isLoading, error, isError } = useQuery<GameState, Error>({
@@ -539,43 +545,6 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     }
   }, [isError, error, navigate, toast]);
   
-  // Function to handle opening the chat
-  const handleOpenChat = () => {
-    setIsChatOpen(true);
-    setUnreadCount(0); // Reset unread count when opening chat
-  };
-  
-  // Function to handle new chat messages and count them when the chat is closed
-  const handleChatMessage = useRef((message: WebSocketMessage) => {
-    if (message.type === "chat_message" && !isChatOpen && message.chatMessage?.playerId !== playerId) {
-      setUnreadCount(prev => prev + 1);
-    }
-  });
-  
-  // Update the handler when dependencies change
-  useEffect(() => {
-    handleChatMessage.current = (message: WebSocketMessage) => {
-      if (message.type === "chat_message" && !isChatOpen && message.chatMessage?.playerId !== playerId) {
-        setUnreadCount(prev => prev + 1);
-      }
-    };
-  }, [isChatOpen, playerId]);
-  
-  // Register the chat message handler for counting unread messages
-  useEffect(() => {
-    const wrappedHandler = (message: WebSocketMessage) => {
-      handleChatMessage.current(message);
-    };
-    
-    const cleanup = addMessageHandler(wrappedHandler);
-    return () => cleanup();
-  }, []);
-  
-  // Function to handle unread count updates from the ChatPanel component
-  const handleUnreadCountChange = (count: number) => {
-    setUnreadCount(count);
-  };
-  
   // Handle loading state
   if (isLoading || !gameStateData) {
     return (
@@ -650,6 +619,11 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       }
     }
   }, [gameStateData]);
+  
+  // Function to check connection status
+  const checkConnectionStatus = () => {
+    // Implementation of connection check
+  };
   
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -862,21 +836,6 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
                 <Send className="mr-1 h-4 w-4" />
                 Play Cards
               </Button>
-              
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handleOpenChat}
-                title="Chat"
-                className="ml-2 relative"
-              >
-                <MessageCircle className="h-4 w-4" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full h-5 min-w-5 flex items-center justify-center text-xs font-medium">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </Button>
             </div>
           </div>
         </div>
@@ -950,15 +909,13 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         />
       )}
       
-      {/* Add the ChatPanel */}
+      {/* Replace the ChatPanel with ChatButton */}
       {currentPlayer && (
-        <ChatPanel
+        <ChatButton
           gameId={gameId}
           playerId={playerId}
           playerName={currentPlayer.name}
-          open={isChatOpen}
-          onClose={() => setIsChatOpen(false)}
-          onUnreadCount={handleUnreadCountChange}
+          position="bottom-right"
         />
       )}
     </div>

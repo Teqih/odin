@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,9 +10,12 @@ import { ArrowLeft, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import RoomCodeDisplay from "@/components/ui/room-code-display";
+import { ChatButton } from "@/components/ui/chat-button";
+import LanguageSelector from "@/components/ui/language-selector";
 
 const CreateGameScreen: React.FC = () => {
   const [, navigate] = useLocation();
+  const { t } = useTranslation();
   const { toast } = useToast();
   
   const [playerName, setPlayerName] = useState("");
@@ -25,8 +29,8 @@ const CreateGameScreen: React.FC = () => {
   const handleCreateGame = async () => {
     if (!playerName.trim()) {
       toast({
-        title: "Name required",
-        description: "Please enter your name",
+        title: t('create.nameRequired'),
+        description: t('create.pleaseEnterName'),
         variant: "destructive"
       });
       return;
@@ -55,8 +59,8 @@ const CreateGameScreen: React.FC = () => {
     } catch (error) {
       console.error("Failed to create game:", error);
       toast({
-        title: "Failed to create game",
-        description: "Please try again",
+        title: t('create.failedToCreate'),
+        description: t('create.tryAgain'),
         variant: "destructive"
       });
     } finally {
@@ -74,15 +78,19 @@ const CreateGameScreen: React.FC = () => {
   
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
+      <div className="absolute top-4 right-4">
+        <LanguageSelector />
+      </div>
+      
       <Card className="max-w-md w-full">
         <CardContent className="pt-6">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-semibold">Create Game</h2>
+            <h2 className="text-2xl font-semibold">{t('create.title')}</h2>
             <Button 
               variant="ghost" 
               size="sm" 
               onClick={handleBackToHome}
-              aria-label="Back"
+              aria-label={t('join.back')}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
@@ -92,14 +100,14 @@ const CreateGameScreen: React.FC = () => {
             <>
               <div className="mb-6">
                 <Label htmlFor="playerName" className="block text-sm mb-1">
-                  Your Name
+                  {t('create.nameLabel')}
                 </Label>
                 <Input
                   id="playerName"
                   type="text"
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder="Enter your name"
+                  placeholder={t('create.namePlaceholder')}
                   className="w-full"
                   maxLength={20}
                 />
@@ -107,14 +115,14 @@ const CreateGameScreen: React.FC = () => {
               
               <div className="mb-6">
                 <Label htmlFor="pointLimit" className="block text-sm mb-1">
-                  Point Limit
+                  {t('create.pointsLimit')}
                 </Label>
                 <Select
                   value={pointLimit}
                   onValueChange={setPointLimit}
                 >
                   <SelectTrigger id="pointLimit" className="w-full">
-                    <SelectValue placeholder="Select point limit" />
+                    <SelectValue placeholder={t('create.pointsLimit')} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="15">15 points</SelectItem>
@@ -130,12 +138,12 @@ const CreateGameScreen: React.FC = () => {
                 onClick={handleCreateGame}
                 disabled={isCreating}
               >
-                {isCreating ? "Creating..." : "Create Game Room"}
+                {isCreating ? t('create.creating') : t('create.startGame')}
               </Button>
             </>
           ) : (
             <div className="mt-6">
-              <p className="text-sm text-muted-foreground mb-1">Share this code with friends:</p>
+              <p className="text-sm text-muted-foreground mb-1">{t('create.shareCode')}</p>
               <div className="bg-muted p-3 rounded-lg font-mono text-lg text-center mb-4">
                 {roomCode}
               </div>
@@ -146,14 +154,14 @@ const CreateGameScreen: React.FC = () => {
                   onClick={() => {
                     navigator.clipboard.writeText(roomCode);
                     toast({
-                      title: "Copied!",
-                      description: "Room code copied to clipboard"
+                      title: t('create.copied'),
+                      description: t('create.codeCopied')
                     });
                   }}
                   className="flex items-center"
                 >
                   <Copy className="mr-2 h-4 w-4" />
-                  Copy Code
+                  {t('create.copyCode')}
                 </Button>
               </div>
               
@@ -161,12 +169,22 @@ const CreateGameScreen: React.FC = () => {
                 className="w-full"
                 onClick={handleGoToLobby}
               >
-                Go to Lobby
+                {t('create.goToLobby')}
               </Button>
             </div>
           )}
         </CardContent>
       </Card>
+      
+      {/* Add ChatButton when game is created */}
+      {gameCreated && gameId && playerId && playerName && (
+        <ChatButton
+          gameId={gameId}
+          playerId={playerId}
+          playerName={playerName}
+          position="bottom-right"
+        />
+      )}
     </div>
   );
 };
