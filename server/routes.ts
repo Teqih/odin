@@ -108,6 +108,13 @@ async function markPlayerDisconnected(gameId: string, playerId: string) {
       }
     }
     
+    // Check if the game exists before trying to update the player connection
+    const game = await storage.getGame(gameId);
+    if (!game) {
+      console.log(`Game ${gameId} not found when disconnecting player ${playerId}`);
+      return; // Exit early if game doesn't exist
+    }
+    
     // Mark player as disconnected in the game state
     await storage.updatePlayerConnection(gameId, playerId, false);
     

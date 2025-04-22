@@ -489,7 +489,10 @@ export class MemStorage implements IStorage {
 
   async updatePlayerConnection(gameId: string, playerId: string, connected: boolean): Promise<GameState> {
     const game = await this.getGame(gameId);
-    if (!game) throw new Error("Game not found");
+    if (!game) {
+      console.log(`Game ${gameId} not found when updating player ${playerId} connection status`);
+      throw new Error("Game not found");
+    }
     
     const playerIndex = game.players.findIndex(p => p.id === playerId);
     if (playerIndex === -1) throw new Error("Player not found");

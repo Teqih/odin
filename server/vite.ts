@@ -23,7 +23,7 @@ export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
-    allowedHosts: true,
+    allowedHosts: ['localhost'],
   };
 
   const vite = await createViteServer({
@@ -75,6 +75,16 @@ export function serveStatic(app: Express) {
       `Could not find the build directory: ${distPath}, make sure to build the client first`,
     );
   }
+
+  // Set correct MIME types for JavaScript modules
+  app.use((req, res, next) => {
+    const url = req.url;
+    // Handle both regular JS files and JS files with query parameters
+    if (url && (url.endsWith('.js') || url.match(/\.js(\?|$)/))) {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    }
+    next();
+  });
 
   app.use(express.static(distPath));
 
