@@ -38,6 +38,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const lastViewedRef = useRef<number>(Date.now());
   const processedMessagesRef = useRef<Set<string>>(new Set());
   const messageHandlerRef = useRef<(() => void) | null>(null);
+  const unreadCountRef = useRef<number>(0);
   
   // Audio recorder hook
   const { 
@@ -123,6 +124,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     );
   };
 
+  // Update the parent component with unread count changes
+  useEffect(() => {
+    if (onUnreadCount) {
+      onUnreadCount(unreadCount);
+    }
+  }, [unreadCount, onUnreadCount]);
+
   // Handle messages from WebSocket
   useEffect(() => {
     // Clear any previous message handler
@@ -141,11 +149,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           
           // If the chat is closed and message is from someone else, increment unread count
           if (!isOpen && message.chatMessage.playerId !== playerId) {
-            const newCount = unreadCount + 1;
-            setUnreadCount(newCount);
-            if (onUnreadCount) {
-              onUnreadCount(newCount);
-            }
+            // Use ref to track unread count to avoid dependency issue
+            unreadCountRef.current += 1;
+            setUnreadCount(unreadCountRef.current);
           }
         }
       } else if (message.type === "chat_history" && message.chatHistory) {
@@ -158,11 +164,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           const unreadMessages = message.chatHistory.filter(
             msg => msg.timestamp > lastViewedRef.current && msg.playerId !== playerId
           );
-          const newCount = unreadMessages.length;
-          setUnreadCount(newCount);
-          if (onUnreadCount) {
-            onUnreadCount(newCount);
-          }
+          unreadCountRef.current = unreadMessages.length;
+          setUnreadCount(unreadCountRef.current);
         }
       }
     };
@@ -184,7 +187,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         messageHandlerRef.current = null;
       }
     };
-  }, [gameId, playerId, isOpen, unreadCount, onUnreadCount]);
+  }, [gameId, playerId, isOpen]); // Remove onUnreadCount from dependencies
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -193,19 +196,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     }
   }, [chatMessages, isOpen]);
 
-  // Handle opening/closing the chat
+  // Sync open prop with internal state
   useEffect(() => {
-    setIsOpen(open);
-    
-    // When opening chat, clear unread count and update last viewed time
-    if (open) {
-      setUnreadCount(0);
-      if (onUnreadCount) {
-        onUnreadCount(0);
+    if (open !== isOpen) {
+      setIsOpen(open);
+      
+      // When opening chat, clear unread count and update last viewed time
+      if (open) {
+        unreadCountRef.current = 0;
+        setUnreadCount(0);
+        lastViewedRef.current = Date.now();
       }
-      lastViewedRef.current = Date.now();
     }
-  }, [open, onUnreadCount]);
+  }, [open, isOpen]);
 
   // Handle voice recording errors
   useEffect(() => {
@@ -219,6 +222,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     setIsOpen(false);
     // Set last viewed time when closing
     lastViewedRef.current = Date.now();
+    // Reset unread count
+    unreadCountRef.current = 0;
+    setUnreadCount(0);
     if (onClose) onClose();
   };
 

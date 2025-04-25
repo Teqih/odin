@@ -73,6 +73,15 @@ const resources = {
       "game.needTwoPlayers": "You need at least 2 players to start the game",
       "game.playerYou": "You",
       "game.playerHost": "Host",
+      "game.roundComplete": "Round Complete!",
+      "game.hasEmptiedHand": "has emptied their hand",
+      "game.roundScores": "Round Scores",
+      "game.startNextRound": "Start Next Round",
+      "game.starting": "Starting...",
+      "game.waitingForHost": "Waiting for host to start the next round...",
+      "game.winner": "Winner!",
+      "game.cards": "cards",
+      "game.points": "points",
       
       // Language
       "language": "Language",
@@ -148,6 +157,15 @@ const resources = {
       "game.needTwoPlayers": "Vous avez besoin d'au moins 2 joueurs pour commencer la partie",
       "game.playerYou": "Vous",
       "game.playerHost": "Hôte",
+      "game.roundComplete": "Manche Terminée !",
+      "game.hasEmptiedHand": "a vidé sa main",
+      "game.roundScores": "Scores de la Manche",
+      "game.startNextRound": "Commencer la Prochaine Manche",
+      "game.starting": "Démarrage...",
+      "game.waitingForHost": "En attente de l'hôte pour commencer la prochaine manche...",
+      "game.winner": "Gagnant !",
+      "game.cards": "cartes",
+      "game.points": "points",
       
       // Langue
       "language": "Langue",

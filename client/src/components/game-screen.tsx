@@ -32,10 +32,14 @@ import {
   Play, 
   Wifi, 
   WifiOff,
-  RefreshCw
+  RefreshCw,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 import { isValidCardSet, sortCards } from "@/lib/card-utils";
 import { ChatButton } from "@/components/ui/chat-button";
+import { useQueryClient } from "@tanstack/react-query";
+import { useSoundEffects } from "@/hooks/useSoundEffects";
 
 // Lazy load heavy components
 const PickCardModal = lazy(() => import("@/components/modals/pick-card-modal"));
@@ -119,8 +123,29 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   
   // Update the hand ref whenever myHand changes
   useEffect(() => {
+    // Only update the handRef without triggering state updates
     handRef.current = myHand;
   }, [myHand]);
+  
+  // Separate effect to update selected cards to avoid infinite loops
+  useEffect(() => {
+    // Only run this when myHand changes and there are selected cards
+    if (myHand.length > 0 && selectedCards.length > 0) {
+      // Check if any selected cards are no longer in the hand
+      const anyInvalidCards = selectedCards.some(
+        selectedCard => !myHand.some(handCard => handCard.id === selectedCard.id)
+      );
+      
+      // Only update state if there are invalid cards to remove
+      if (anyInvalidCards) {
+        setSelectedCards(prevSelected => 
+          prevSelected.filter(selectedCard => 
+            myHand.some(handCard => handCard.id === selectedCard.id)
+          )
+        );
+      }
+    }
+  }, [myHand, selectedCards]);
   
   // Play cards mutation
   const playCardsMutation = useMutation({
@@ -388,6 +413,13 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     }
   }, [gameStateData]);
   
+  // Add a useEffect to clear selected cards when it's not the player's turn
+  useEffect(() => {
+    if (gameStateData && gameStateData.players[gameStateData.currentTurn]?.id !== playerId) {
+      setSelectedCards([]);
+    }
+  }, [gameStateData?.currentTurn, playerId]);
+  
   // Handle drag and drop
   const handleDragOver = (e: DragEvent) => {
     e.preventDefault();
@@ -414,33 +446,41 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   };
   
   const handleCardSelection = (card: CardType) => {
-    // Check if card is already selected
-    const isSelected = selectedCards.some(c => c.id === card.id);
-    
-    if (isSelected) {
-      // Deselect the card
-      setSelectedCards(selectedCards.filter(c => c.id !== card.id));
-    } else {
-      // Check if the card is actually in the player's hand
-      const currentHand = handRef.current;
-      const handContainsCard = currentHand.some(c => c.id === card.id);
-      if (!handContainsCard) {
-        console.error("Attempted to select a card not in player's hand");
-        return;
-      }
+    setSelectedCards(prevSelected => {
+      // Check if card is already selected
+      const isSelected = prevSelected.some(c => c.id === card.id);
       
-      // Check if the new card can be added to the selection
-      const newSelection = [...selectedCards, card];
-      if (isValidCardSet(newSelection)) {
-        setSelectedCards(newSelection);
+      if (isSelected) {
+        // Deselect the card using functional update pattern
+        return prevSelected.filter(c => c.id !== card.id);
       } else {
-        toast({
-          title: "Invalid selection",
-          description: "All cards must be the same color or same value",
-          variant: "destructive"
-        });
+        // Check if the card is actually in the player's hand using both handRef and gameStateData
+        const currentHand = handRef.current;
+        const currentPlayer = gameStateData?.players.find(p => p.id === playerId);
+        
+        // Verify card exists in current hand (use both refs for extra safety)
+        const handContainsCard = currentHand.some(c => c.id === card.id) && 
+                                (currentPlayer?.hand.some(c => c.id === card.id) || false);
+        
+        if (!handContainsCard) {
+          console.error("Attempted to select a card not in player's hand");
+          return prevSelected; // Return unchanged state
+        }
+        
+        // Check if the new card can be added to the selection
+        const newSelection = [...prevSelected, card];
+        if (isValidCardSet(newSelection)) {
+          return newSelection;
+        } else {
+          toast({
+            title: "Invalid selection",
+            description: "All cards must be the same color or same value",
+            variant: "destructive"
+          });
+          return prevSelected; // Return unchanged state on validation failure
+        }
       }
-    }
+    });
   };
   
   const handlePlayCards = () => {
@@ -469,6 +509,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       return;
     }
     
+    // Play card sound effect
+    playCardSound();
+    
     // Create an optimistic update for play cards
     const optimisticCards = [...selectedCards]; // Store cards for visual feedback
     
@@ -477,6 +520,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   };
   
   const handlePassTurn = () => {
+    // Clear selected cards when passing turn
+    setSelectedCards([]);
+    
     // Create an optimistic update of the game state
     if (gameStateData) {
       const nextPlayerIndex = (gameStateData.currentTurn + 1) % gameStateData.players.length;
@@ -634,6 +680,31 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     // Implementation of connection check
   };
   
+  const { playYourTurnSound, playCardSound, soundEnabled, toggleSound } = useSoundEffects();
+  const previousTurnRef = useRef<string | null>(null);
+
+  // Find the useEffect for turn sound and replace it with this fixed version
+  useEffect(() => {
+    // Store current turn data in a ref to avoid triggering the effect again
+    if (gameStateData) {
+      const currentTurnPlayerId = gameStateData.players[gameStateData.currentTurn]?.id;
+      const isMyTurnNow = currentTurnPlayerId === playerId;
+      
+      // Only compare with the previous value from the ref (not a dependency)
+      const wasMyTurnBefore = previousTurnRef.current !== null && 
+        previousTurnRef.current === playerId;
+      
+      // Play sound when it newly becomes our turn (and wasn't our turn before)
+      if (isMyTurnNow && !wasMyTurnBefore) {
+        playYourTurnSound();
+      }
+      
+      // Store current player's ID in the ref, not the turn index
+      previousTurnRef.current = currentTurnPlayerId;
+    }
+  // Only depend on gameStateData and playerId, not on the function or players array
+  }, [gameStateData, playerId]);
+  
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       {/* Game Header */}
@@ -643,7 +714,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
           <RoomCodeDisplay roomCode={safeGameState.roomCode} className="ml-4" />
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {/* Connection Status Indicator */}
           <div className="flex items-center mr-2">
             <div className={`h-2 w-2 rounded-full mr-1 ${
@@ -663,10 +734,20 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="p-1 h-auto"
-            onClick={showRules}
+            onClick={toggleSound} 
+            aria-label={soundEnabled ? "Disable sounds" : "Enable sounds"}
+            title={soundEnabled ? "Disable sounds" : "Enable sounds"}
           >
-            <HelpCircle className="h-5 w-5" />
+            {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={showRules}
+            aria-label="Game Rules"
+            title="Game Rules"
+          >
+            <HelpCircle size={18} />
           </Button>
           <Button 
             variant="ghost" 
@@ -803,7 +884,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
           
           {/* Game Info and Actions */}
           <div className="game-info-container mb-4 flex flex-col md:flex-row items-center justify-between w-full">
-            <div className="game-status text-center md:text-left mb-3 md:mb-0">
+            <div className={`game-status text-center md:text-left mb-3 md:mb-0 p-2 rounded-md ${isMyTurn ? 'your-turn-highlight' : ''}`}>
               <p className="text-lg font-medium">
                 {isMyTurn 
                   ? "Your turn" 
@@ -852,7 +933,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         {/* Player Hand */}
         <div className="player-hand-container bg-card shadow-md p-4">
           <div className="mb-2 flex justify-between items-center">
-            <div className="flex items-center">
+            <div className={`flex items-center ${isMyTurn ? 'your-turn-highlight p-1 rounded-md' : ''}`}>
               <PlayerAvatar 
                 name={currentPlayer.name} 
                 color="#8e24aa" 
@@ -905,6 +986,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
             winnerName={roundWinnerName}
             scores={roundScores}
             onStartNextRound={handleStartNewRound}
+            onLeaveGame={handleLeaveGame}
             isLoading={startNewRoundMutation.isPending}
             isHost={currentPlayer.isHost}
           />

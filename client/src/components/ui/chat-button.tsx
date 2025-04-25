@@ -23,6 +23,7 @@ export const ChatButton: React.FC<ChatButtonProps> = ({
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isPanelMounted, setIsPanelMounted] = useState(false);
+  const [lastViewedTime, setLastViewedTime] = useState(Date.now());
 
   // Initialize panel with slight delay to prevent immediate mount during initial load
   useEffect(() => {
@@ -42,7 +43,21 @@ export const ChatButton: React.FC<ChatButtonProps> = ({
   }, [gameId, playerId]);
 
   const handleUnreadCountChange = (count: number) => {
-    setUnreadCount(count);
+    // Only update if the count is different to avoid unnecessary rerenders
+    if (count !== unreadCount) {
+      setUnreadCount(count);
+    }
+  };
+
+  const handleToggle = () => {
+    // Use functional updates to avoid stale state
+    setIsChatOpen((prev) => !prev);
+    
+    // Reset unread count when opening chat
+    if (!isChatOpen) {
+      setUnreadCount(0);
+      setLastViewedTime(Date.now());
+    }
   };
 
   const positionClasses = position === "bottom-right" 
@@ -52,7 +67,7 @@ export const ChatButton: React.FC<ChatButtonProps> = ({
   return (
     <>
       <Button
-        onClick={() => setIsChatOpen(true)}
+        onClick={handleToggle}
         size="icon"
         className={`fixed ${positionClasses} z-40 shadow-lg hover:shadow-xl transition-all`}
         aria-label="Open chat"
