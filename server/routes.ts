@@ -723,11 +723,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         res.status(200).json({ success: true });
       } catch (error) {
-        return res
-          .status(400)
-          .json({
-            message: error instanceof Error ? error.message : "Invalid play",
-          });
+        return res.status(400).json({
+          message: error instanceof Error ? error.message : "Invalid play",
+        });
       }
     } catch (error) {
       console.error("Play cards error:", error);
@@ -767,11 +765,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         res.status(200).json({ success: true });
       } catch (error) {
-        return res
-          .status(400)
-          .json({
-            message: error instanceof Error ? error.message : "Invalid pick",
-          });
+        return res.status(400).json({
+          message: error instanceof Error ? error.message : "Invalid pick",
+        });
       }
     } catch (error) {
       console.error("Pick card error:", error);
@@ -809,11 +805,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         res.status(200).json({ success: true });
       } catch (error) {
-        return res
-          .status(400)
-          .json({
-            message: error instanceof Error ? error.message : "Invalid pass",
-          });
+        return res.status(400).json({
+          message: error instanceof Error ? error.message : "Invalid pass",
+        });
       }
     } catch (error) {
       console.error("Pass turn error:", error);
@@ -893,25 +887,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return stream;
         };
 
-        // Update the ffmpeg usage to use a Writable stream for output
+        // Update the ffmpeg usage to use a readable stream and handle output properly
         const inputBuffer = req.file.buffer;
         const inputStream = bufferToStream(inputBuffer);
         const outputBuffer: Buffer = await new Promise((resolve, reject) => {
           const chunks: Buffer[] = [];
-
-          const writableStream = new Writable({
-            write(chunk, encoding, callback) {
-              chunks.push(chunk);
-              callback();
-            },
-          });
 
           ffmpeg(inputStream)
             .inputFormat("webm")
             .toFormat("mp3")
             .on("error", (err) => reject(err))
             .on("end", () => resolve(Buffer.concat(chunks)))
-            .pipe(writableStream);
+            .pipe({
+              write: (chunk: Buffer) => {
+                chunks.push(chunk);
+                return true; // Return true to indicate successful write
+              },
+            });
         });
 
         // Store the converted audio file
@@ -958,7 +950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Set headers for audio content
-      res.set("Content-Type", "audio/webm");
+      res.set("Content-Type", "audio/mpeg"); // Updated to match mp3 format
       res.set("Content-Length", audioData.length.toString());
 
       // Send the audio data
