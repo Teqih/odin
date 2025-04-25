@@ -75,6 +75,10 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   // Get stored player info - ensure this is persisted properly
   const playerId = sessionStorage.getItem("playerId") || "";
   
+  // Initialize sound effects hook before any conditional returns
+  const { playYourTurnSound, playCardSound, soundEnabled, toggleSound } = useSoundEffects();
+  const previousTurnRef = useRef<string | null>(null);
+  
   // State for selected cards and game flow
   const [selectedCards, setSelectedCards] = useState<CardType[]>([]);
   const [showPickCardModal, setShowPickCardModal] = useState(false);
@@ -120,6 +124,27 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   const gameState = optimisticGameState || gameStateData;
   const currentPlayer = gameState?.players?.find((p: Player) => p.id === playerId);
   const myHand = currentPlayer ? sortCards(currentPlayer.hand || []) : [];
+  
+  // Add effect for sound notifications when it's the player's turn
+  useEffect(() => {
+    // Store current turn data in a ref to avoid triggering the effect again
+    if (gameStateData) {
+      const currentTurnPlayerId = gameStateData.players[gameStateData.currentTurn]?.id;
+      const isMyTurnNow = currentTurnPlayerId === playerId;
+      
+      // Only compare with the previous value from the ref (not a dependency)
+      const wasMyTurnBefore = previousTurnRef.current !== null && 
+        previousTurnRef.current === playerId;
+      
+      // Play sound when it newly becomes our turn (and wasn't our turn before)
+      if (isMyTurnNow && !wasMyTurnBefore) {
+        playYourTurnSound();
+      }
+      
+      // Store current player's ID in the ref, not the turn index
+      previousTurnRef.current = currentTurnPlayerId;
+    }
+  }, [gameStateData, playerId, playYourTurnSound]);
   
   // Update the hand ref whenever myHand changes
   useEffect(() => {
@@ -679,31 +704,6 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   const checkConnectionStatus = () => {
     // Implementation of connection check
   };
-  
-  const { playYourTurnSound, playCardSound, soundEnabled, toggleSound } = useSoundEffects();
-  const previousTurnRef = useRef<string | null>(null);
-
-  // Find the useEffect for turn sound and replace it with this fixed version
-  useEffect(() => {
-    // Store current turn data in a ref to avoid triggering the effect again
-    if (gameStateData) {
-      const currentTurnPlayerId = gameStateData.players[gameStateData.currentTurn]?.id;
-      const isMyTurnNow = currentTurnPlayerId === playerId;
-      
-      // Only compare with the previous value from the ref (not a dependency)
-      const wasMyTurnBefore = previousTurnRef.current !== null && 
-        previousTurnRef.current === playerId;
-      
-      // Play sound when it newly becomes our turn (and wasn't our turn before)
-      if (isMyTurnNow && !wasMyTurnBefore) {
-        playYourTurnSound();
-      }
-      
-      // Store current player's ID in the ref, not the turn index
-      previousTurnRef.current = currentTurnPlayerId;
-    }
-  // Only depend on gameStateData and playerId, not on the function or players array
-  }, [gameStateData, playerId]);
   
   return (
     <div className="h-screen flex flex-col overflow-hidden">
