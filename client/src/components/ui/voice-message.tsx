@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { PlayCircle, PauseCircle, XCircle, RefreshCw, Download } from "lucide-react";
+import { PlayCircle, PauseCircle, XCircle, RefreshCw, Download, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
+import axios from "axios";
+import { convertWebmToCompatibleFormat } from "@/lib/audioConverter";
 
 // Helper to detect iOS
 const isIOS = () => {
@@ -28,137 +30,174 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   const [retryCount, setRetryCount] = useState(0);
   const [isIosDevice] = useState(() => isIOS());
   const [isAudioSupported, setIsAudioSupported] = useState(true);
+  const [isConverting, setIsConverting] = useState(false);
+  const [convertedUrl, setConvertedUrl] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef<boolean>(true);
 
-  // Set up audio element
+  // Function to load audio file and convert if needed
+  const setupAudioWithFormat = async (url: string) => {
+    if (!mountedRef.current) return;
+    
+    try {
+      // Clean up existing audio
+      if (audioRef.current) {
+        try {
+          audioRef.current.pause();
+          audioRef.current.removeAttribute('src');
+          audioRef.current.load();
+        } catch (e) {
+          console.warn('Error cleaning up previous audio:', e);
+        }
+        audioRef.current = null;
+      }
+      
+      // Create audio element
+      const audio = document.createElement('audio');
+      
+      // Check if the audio is likely a WebM format (from Android) on iOS
+      const isWebmAudio = url.includes('.webm') || url.includes('/voice-messages/');
+      
+      if (isIosDevice && isWebmAudio && !convertedUrl) {
+        // Handle WebM on iOS - we need to fetch and check the headers
+        try {
+          const response = await axios.head(url);
+          const needsConversion = response.headers['x-requires-conversion'] === 'true' || 
+                                  response.headers['x-audio-format'] === 'webm';
+          
+          if (needsConversion) {
+            setIsAudioSupported(false);
+            setError('This audio format requires conversion for your device');
+            return;
+          }
+        } catch (err) {
+          console.error('Error checking audio format:', err);
+        }
+      }
+      
+      // Set up error handler
+      const handleError = (e: Event) => {
+        console.error('Audio error:', e, audio.error);
+        if (mountedRef.current) {
+          setIsPlaying(false);
+          
+          // Format-specific error handling
+          if (audio.error && (audio.error.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED || 
+              audio.error.code === MediaError.MEDIA_ERR_DECODE)) {
+            if (isIosDevice && isWebmAudio) {
+              setError('This audio format requires conversion for your device');
+              setIsAudioSupported(false);
+              return;
+            }
+          }
+          
+          setError('Error loading audio. Try again.');
+        }
+      };
+      
+      audio.addEventListener('error', handleError);
+      
+      // Add playback event listeners
+      const handlePlay = () => {
+        if (mountedRef.current) setIsPlaying(true);
+      };
+      
+      const handlePause = () => {
+        if (mountedRef.current) setIsPlaying(false);
+      };
+      
+      const handleEnded = () => {
+        if (mountedRef.current) {
+          setIsPlaying(false);
+          setProgress(0);
+        }
+      };
+      
+      audio.addEventListener('play', handlePlay);
+      audio.addEventListener('pause', handlePause);
+      audio.addEventListener('ended', handleEnded);
+      
+      // Setup for better mobile compatibility
+      audio.preload = 'metadata';
+      audio.crossOrigin = 'anonymous';
+      
+      // Store reference
+      audioRef.current = audio;
+      
+      // Use converted URL if available
+      const audioSource = convertedUrl || `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+      
+      // Listen for metadata loading
+      audio.addEventListener('loadedmetadata', () => {
+        if (mountedRef.current) {
+          console.log('Audio loaded successfully');
+          setError(null);
+          setIsAudioSupported(true);
+        }
+      });
+      
+      // For iOS canplay event
+      if (isIosDevice) {
+        audio.addEventListener('canplay', () => {
+          if (mountedRef.current) {
+            console.log('iOS: Audio can play');
+            setIsAudioSupported(true);
+          }
+        });
+      }
+      
+      // Set source and load
+      audio.src = audioSource;
+      audio.load();
+      
+    } catch (err) {
+      console.error('Error creating audio element:', err);
+      if (mountedRef.current) {
+        setError('Browser audio error');
+      }
+    }
+  };
+
+  // Convert WebM to compatible format using client-side utilities
+  const convertAudio = async () => {
+    if (!mountedRef.current) return;
+    
+    setIsConverting(true);
+    setError(null);
+    
+    try {
+      // Fetch the audio file
+      const response = await fetch(audioUrl);
+      const audioBlob = await response.blob();
+      
+      // Try to convert the blob using our utility
+      const convertedBlobUrl = await convertWebmToCompatibleFormat(audioBlob);
+      
+      if (convertedBlobUrl) {
+        setConvertedUrl(convertedBlobUrl);
+        setIsAudioSupported(true);
+        setupAudioWithFormat(convertedBlobUrl);
+      } else {
+        throw new Error("Unable to convert audio to a compatible format");
+      }
+    } catch (error) {
+      console.error('Conversion error:', error);
+      setError('Could not convert audio. Please download instead.');
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  // Setup audio on mount and when URL changes
   useEffect(() => {
     // Set mounted flag
     mountedRef.current = true;
     
-    const createAudio = () => {
-      if (!mountedRef.current) return;
-      
-      try {
-        // Clean up existing audio if present
-        if (audioRef.current) {
-          try {
-            audioRef.current.pause();
-            audioRef.current.removeAttribute('src');
-            audioRef.current.load();
-          } catch (e) {
-            console.warn('Error cleaning up previous audio:', e);
-          }
-          audioRef.current = null;
-        }
-        
-        // Create new audio element - using HTMLAudioElement directly
-        const audio = document.createElement('audio');
-        
-        // Check for iOS WebM issues
-        const isWebmAudio = audioUrl.includes('.webm') || (isIosDevice && !audioUrl.includes('.m4a'));
-        if (isIosDevice && isWebmAudio) {
-          console.warn("iOS device may have issues with WebM audio format");
-        }
-        
-        // Set up error handler before setting src to catch all errors
-        const handleError = (e: Event) => {
-          console.error('Audio error:', e, audio.error);
-          if (mountedRef.current) {
-            setIsPlaying(false);
-            
-            // Check specific iOS + WebM incompatibility
-            if (isIosDevice && isWebmAudio && audio.error) {
-              if (audio.error.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED || 
-                  audio.error.code === MediaError.MEDIA_ERR_DECODE) {
-                setError('This audio format is not supported on your device');
-                setIsAudioSupported(false);
-                return;
-              }
-            }
-            
-            setError('Error loading audio. Try again.');
-          }
-        };
-        
-        audio.addEventListener('error', handleError);
-        
-        // Add event listeners for playback state using function references
-        // to make sure we can remove them properly later
-        const handlePlay = () => {
-          if (mountedRef.current) setIsPlaying(true);
-        };
-        
-        const handlePause = () => {
-          if (mountedRef.current) setIsPlaying(false);
-        };
-        
-        const handleEnded = () => {
-          if (mountedRef.current) {
-            setIsPlaying(false);
-            setProgress(0);
-          }
-        };
-        
-        audio.addEventListener('play', handlePlay);
-        audio.addEventListener('pause', handlePause);
-        audio.addEventListener('ended', handleEnded);
-        
-        // Store listeners for cleanup
-        audio.dataset.handlePlay = 'true';
-        audio.dataset.handlePause = 'true';
-        audio.dataset.handleEnded = 'true';
-        audio.dataset.handleError = 'true';
-        
-        // Setup audio for better mobile compatibility
-        audio.preload = 'metadata';
-        
-        // Set crossOrigin to fix potential CORS issues
-        audio.crossOrigin = 'anonymous';
-        
-        // Store reference before setting src
-        audioRef.current = audio;
-        
-        // Add cache busting to prevent browser caching issues
-        const cacheBuster = `${audioUrl}${audioUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
-        
-        // Listen for loadedmetadata to know when audio is ready
-        audio.addEventListener('loadedmetadata', () => {
-          if (mountedRef.current) {
-            console.log('Audio loaded successfully');
-            setError(null);
-            setIsAudioSupported(true);
-          }
-        });
-        
-        // For iOS, add special handling to check if audio could be played
-        if (isIosDevice) {
-          audio.addEventListener('canplay', () => {
-            if (mountedRef.current) {
-              console.log('iOS: Audio can play');
-              setIsAudioSupported(true);
-            }
-          });
-        }
-        
-        // Set source and try to load
-        audio.src = cacheBuster;
-        
-        // Manually trigger loading
-        audio.load();
-        // No need to handle load promise - audio.load() doesn't return a promise
-        // Just catch any loading errors through the error event listener
-      } catch (err) {
-        console.error('Error creating audio element:', err);
-        if (mountedRef.current) {
-          setError('Browser audio error');
-        }
-      }
-    };
-    
-    // Create initial audio
-    createAudio();
+    // Reset state for new audio URL
+    if (convertedUrl === null) {
+      setupAudioWithFormat(audioUrl);
+    }
     
     // Cleanup function
     return () => {
@@ -186,22 +225,26 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
           audio.removeEventListener('loadedmetadata', () => {});
           audio.removeEventListener('canplay', () => {});
           
-          // Clear source and release resources
+          // Clear source
           audio.src = '';
           audio.removeAttribute('src');
           audio.load();
         } catch (e) {
-          // Ignore errors during cleanup
           console.warn('Error during audio cleanup:', e);
         }
         
         // Clear reference
         audioRef.current = null;
       }
+      
+      // Clear any converted URLs
+      if (convertedUrl) {
+        URL.revokeObjectURL(convertedUrl);
+      }
     };
-  }, [audioUrl, retryCount, isIosDevice]);
+  }, [audioUrl, retryCount, isIosDevice, convertedUrl]);
 
-  // Handle direct download for unsupported formats
+  // Handle direct download
   const handleDownload = () => {
     if (audioUrl) {
       // Create a temporary link element
@@ -224,7 +267,6 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     if (isPlaying) {
       try {
         audioRef.current.pause();
-        // Clear progress update interval
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
@@ -235,16 +277,13 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       }
     } else {
       try {
-        // Try to play, with error handling
         const playPromise = audioRef.current.play();
         
         if (playPromise !== undefined) {
           playPromise
             .then(() => {
-              // Playback started successfully
               if (!mountedRef.current) return;
               
-              // Set up progress update interval
               if (intervalRef.current) {
                 clearInterval(intervalRef.current);
               }
@@ -263,7 +302,6 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
                     const currentProgress = (audioRef.current.currentTime / audioRef.current.duration) * 100;
                     setProgress(isNaN(currentProgress) ? 0 : currentProgress);
                   } catch (e) {
-                    // Handle potential errors reading current time
                     console.error('Error updating progress:', e);
                   }
                 }
@@ -273,7 +311,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
               if (!mountedRef.current) return;
               console.error('Error playing audio:', error);
               
-              // Handle iOS + WebM incompatibility
+              // Check for format-specific errors
               if (isIosDevice && (audioUrl.includes('.webm') || !audioUrl.includes('.m4a'))) {
                 setError('This audio format is not supported on your device');
                 setIsAudioSupported(false);
@@ -296,6 +334,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     setProgress(0);
     setError(null);
     setIsAudioSupported(true);
+    setConvertedUrl(null);
   };
 
   // Format duration display (MM:SS)
@@ -319,16 +358,42 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
             <XCircle size={16} />
             <span>{error}</span>
           </div>
+          
           {!isAudioSupported && isIosDevice ? (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleDownload}
-              className="mt-1 flex items-center gap-1"
-            >
-              <Download size={14} />
-              <span>Download Audio</span>
-            </Button>
+            <div className="flex flex-col gap-2 mt-1 w-full">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={convertAudio}
+                disabled={isConverting}
+                className="flex items-center gap-1"
+              >
+                {isConverting ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Converting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={14} />
+                    <span>Play in Compatible Format</span>
+                  </>
+                )}
+              </Button>
+              
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={handleDownload}
+                className="flex items-center gap-1"
+              >
+                <Download size={14} />
+                <span>Download Audio</span>
+              </Button>
+            </div>
           ) : (
             <Button 
               variant="ghost" 

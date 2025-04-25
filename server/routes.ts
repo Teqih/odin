@@ -820,20 +820,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isIOS = /iPad|iPhone|iPod/.test(userAgent) || 
                    (/MacIntel/.test(userAgent) && req.headers['user-mac-touchpoints']);
       
-      // For iOS clients, ensure we set appropriate headers
+      // For iOS clients requesting WebM, set special header to identify format
       if (isIOS && audioData.format === 'audio/webm') {
-        console.log('iOS client requesting WebM audio - setting appropriate headers');
-        // iOS doesn't support WebM, but we'll still send it and let the client
-        // handle the error and display appropriate message
-        res.set('Content-Type', 'audio/mp4'); // This helps iOS attempt to play it at least
-        res.set('Cache-Control', 'no-cache, no-store');
-        res.set('X-Content-Type-Options', 'nosniff');
+        res.set('X-Audio-Format', 'webm');
+        res.set('X-Audio-Original-Format', audioData.format);
+        res.set('X-Requires-Conversion', 'true');
+        // Send with correct content type for WebM
+        res.set('Content-Type', 'audio/webm');
       } else {
         // Set headers for audio content based on stored format
         res.set('Content-Type', audioData.format || 'audio/webm');
-        res.set('Cache-Control', 'no-cache, no-store');
       }
       
+      // Allow cross-origin requests for the audio files
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
       res.set('Content-Length', audioData.buffer.length.toString());
       
       // Send the audio data
