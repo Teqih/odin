@@ -957,21 +957,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.send(audioData);
       }
 
+      // Validate the range header and log details
+      console.log("Range header:", range);
+      console.log("Audio file size:", audioData.length);
+
       // Parse the range header
       const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
       const start = parseInt(startStr, 10);
       const end = endStr ? parseInt(endStr, 10) : audioData.length - 1;
 
-      if (start >= audioData.length || end >= audioData.length) {
+      // Validate the range
+      if (
+        isNaN(start) ||
+        isNaN(end) ||
+        start < 0 ||
+        end >= audioData.length ||
+        start > end
+      ) {
+        console.error("Invalid range:", { start, end });
         return res
           .status(416)
           .set("Content-Range", `bytes */${audioData.length}`)
           .end();
       }
 
+      // Calculate the chunk size and log details
       const chunkSize = end - start + 1;
+      console.log("Serving range:", { start, end, chunkSize });
+
+      // Extract the requested chunk
       const chunk = audioData.slice(start, end + 1);
 
+      // Send the partial content response
       res
         .status(206)
         .set("Content-Range", `bytes ${start}-${end}/${audioData.length}`)
