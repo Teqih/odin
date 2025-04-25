@@ -364,6 +364,20 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       }
     }
   }, [gameStateData, playerId]);
+
+  // Add a useEffect to clear the optimistic state when we get a new update
+  useEffect(() => {
+    if (gameStateData && optimisticGameState) {
+      // If the server's turn differs from our optimistic update, clear the optimistic state
+      if (gameStateData.currentTurn !== optimisticGameState.currentTurn) {
+        setOptimisticGameState(null);
+      }
+      // Or if we get a new action after our pass
+      if (gameStateData.lastAction.type !== optimisticGameState.lastAction.type) {
+        setOptimisticGameState(null);
+      }
+    }
+  }, [gameStateData]);
   
   // Handle drag and drop
   const handleDragOver = (e: DragEvent) => {
@@ -605,20 +619,6 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   const currentPlayCards = safeGameState.currentPlay;
   const currentTurnPlayer = safeGameState.players[safeGameState.currentTurn];
   const opponents = safeGameState.players.filter(p => p.id !== playerId);
-  
-  // Add a useEffect to clear the optimistic state when we get a new update
-  useEffect(() => {
-    if (gameStateData && optimisticGameState) {
-      // If the server's turn differs from our optimistic update, clear the optimistic state
-      if (gameStateData.currentTurn !== optimisticGameState.currentTurn) {
-        setOptimisticGameState(null);
-      }
-      // Or if we get a new action after our pass
-      if (gameStateData.lastAction.type !== optimisticGameState.lastAction.type) {
-        setOptimisticGameState(null);
-      }
-    }
-  }, [gameStateData]);
   
   // Function to check connection status
   const checkConnectionStatus = () => {
