@@ -1,7 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { PlayCircle, PauseCircle, XCircle, RefreshCw } from "lucide-react";
+import { PlayCircle, PauseCircle, XCircle, RefreshCw, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Helper to detect iOS
+const isIOS = () => {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+};
 
 interface VoiceMessageProps {
   audioUrl: string;
@@ -20,6 +26,8 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [isIosDevice] = useState(() => isIOS());
+  const [isAudioSupported, setIsAudioSupported] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef<boolean>(true);
@@ -48,11 +56,28 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         // Create new audio element - using HTMLAudioElement directly
         const audio = document.createElement('audio');
         
+        // Check for iOS WebM issues
+        const isWebmAudio = audioUrl.includes('.webm') || (isIosDevice && !audioUrl.includes('.m4a'));
+        if (isIosDevice && isWebmAudio) {
+          console.warn("iOS device may have issues with WebM audio format");
+        }
+        
         // Set up error handler before setting src to catch all errors
         const handleError = (e: Event) => {
-          console.error('Audio error:', e);
+          console.error('Audio error:', e, audio.error);
           if (mountedRef.current) {
             setIsPlaying(false);
+            
+            // Check specific iOS + WebM incompatibility
+            if (isIosDevice && isWebmAudio && audio.error) {
+              if (audio.error.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED || 
+                  audio.error.code === MediaError.MEDIA_ERR_DECODE) {
+                setError('This audio format is not supported on your device');
+                setIsAudioSupported(false);
+                return;
+              }
+            }
+            
             setError('Error loading audio. Try again.');
           }
         };
@@ -103,8 +128,19 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
           if (mountedRef.current) {
             console.log('Audio loaded successfully');
             setError(null);
+            setIsAudioSupported(true);
           }
         });
+        
+        // For iOS, add special handling to check if audio could be played
+        if (isIosDevice) {
+          audio.addEventListener('canplay', () => {
+            if (mountedRef.current) {
+              console.log('iOS: Audio can play');
+              setIsAudioSupported(true);
+            }
+          });
+        }
         
         // Set source and try to load
         audio.src = cacheBuster;
@@ -148,6 +184,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
           audio.removeEventListener('ended', () => {});
           audio.removeEventListener('error', () => {});
           audio.removeEventListener('loadedmetadata', () => {});
+          audio.removeEventListener('canplay', () => {});
           
           // Clear source and release resources
           audio.src = '';
@@ -162,7 +199,20 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
         audioRef.current = null;
       }
     };
-  }, [audioUrl, retryCount]);
+  }, [audioUrl, retryCount, isIosDevice]);
+
+  // Handle direct download for unsupported formats
+  const handleDownload = () => {
+    if (audioUrl) {
+      // Create a temporary link element
+      const a = document.createElement('a');
+      a.href = audioUrl;
+      a.download = `voice-message-${new Date(timestamp).toISOString()}.audio`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
 
   // Toggle play/pause
   const togglePlayback = () => {
@@ -222,12 +272,20 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
             .catch(error => {
               if (!mountedRef.current) return;
               console.error('Error playing audio:', error);
-              setError('Cannot play audio. Try again.');
+              
+              // Handle iOS + WebM incompatibility
+              if (isIosDevice && (audioUrl.includes('.webm') || !audioUrl.includes('.m4a'))) {
+                setError('This audio format is not supported on your device');
+                setIsAudioSupported(false);
+              } else {
+                setError('Cannot play audio. Try again.');
+              }
             });
         }
       } catch (e) {
         console.error('Error initiating audio playback:', e);
         setError('Browser cannot play this audio format');
+        setIsAudioSupported(false);
       }
     }
   };
@@ -237,6 +295,7 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
     setRetryCount(prev => prev + 1);
     setProgress(0);
     setError(null);
+    setIsAudioSupported(true);
   };
 
   // Format duration display (MM:SS)
@@ -260,15 +319,27 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
             <XCircle size={16} />
             <span>{error}</span>
           </div>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={handleRetry}
-            className="mt-1 flex items-center gap-1"
-          >
-            <RefreshCw size={14} />
-            <span>Retry</span>
-          </Button>
+          {!isAudioSupported && isIosDevice ? (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleDownload}
+              className="mt-1 flex items-center gap-1"
+            >
+              <Download size={14} />
+              <span>Download Audio</span>
+            </Button>
+          ) : (
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={handleRetry}
+              className="mt-1 flex items-center gap-1"
+            >
+              <RefreshCw size={14} />
+              <span>Retry</span>
+            </Button>
+          )}
         </div>
       ) : (
         <>

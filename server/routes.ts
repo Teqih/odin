@@ -815,8 +815,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Voice message not found' });
       }
       
-      // Set headers for audio content based on stored format
-      res.set('Content-Type', audioData.format || 'audio/webm');
+      // Check if request is coming from iOS
+      const userAgent = req.headers['user-agent'] || '';
+      const isIOS = /iPad|iPhone|iPod/.test(userAgent) || 
+                   (/MacIntel/.test(userAgent) && req.headers['user-mac-touchpoints']);
+      
+      // For iOS clients, ensure we set appropriate headers
+      if (isIOS && audioData.format === 'audio/webm') {
+        console.log('iOS client requesting WebM audio - setting appropriate headers');
+        // iOS doesn't support WebM, but we'll still send it and let the client
+        // handle the error and display appropriate message
+        res.set('Content-Type', 'audio/mp4'); // This helps iOS attempt to play it at least
+        res.set('Cache-Control', 'no-cache, no-store');
+        res.set('X-Content-Type-Options', 'nosniff');
+      } else {
+        // Set headers for audio content based on stored format
+        res.set('Content-Type', audioData.format || 'audio/webm');
+        res.set('Cache-Control', 'no-cache, no-store');
+      }
+      
       res.set('Content-Length', audioData.buffer.length.toString());
       
       // Send the audio data
