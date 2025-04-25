@@ -3,8 +3,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, MessageCircle, X, Mic, StopCircle, Loader2 } from "lucide-react";
-import { sendMessage, addMessageHandler, addTypedMessageHandler } from "@/lib/websocket";
-import { ChatMessage, WebSocketMessage, MessageType } from "@shared/schema";
+import { sendMessage, addMessageHandler } from "@/lib/websocket";
+import { ChatMessage, WebSocketMessage } from "@shared/schema";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
@@ -49,6 +49,79 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     stopRecording,
     clearRecording
   } = useAudioRecorder();
+
+  // Function declarations
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const handleSendMessage = () => {
+    if (!message.trim()) return;
+
+    // Send the message via WebSocket
+    sendMessage({
+      type: "chat_message",
+      gameId,
+      playerId,
+      chatMessage: {
+        id: "temp-" + Date.now(), // Server will replace this
+        gameId,
+        playerId,
+        playerName,
+        message: message.trim(),
+        timestamp: Date.now(),
+        messageType: "text"
+      }
+    });
+
+    setMessage("");
+  };
+
+  // Render a chat message
+  const renderMessage = (msg: ChatMessage) => {
+    const isOwnMessage = msg.playerId === playerId;
+    const messageTime = new Date(msg.timestamp);
+    const formattedTime = format(messageTime, "h:mm a");
+    
+    return (
+      <div 
+        key={msg.id} 
+        className={cn(
+          "flex flex-col max-w-[80%] rounded-lg p-3 mb-1",
+          isOwnMessage 
+            ? "bg-primary text-primary-foreground self-end" 
+            : "bg-muted self-start"
+        )}
+      >
+        {!isOwnMessage && (
+          <div className="text-xs font-medium mb-1">
+            {msg.playerName}
+          </div>
+        )}
+        
+        {msg.messageType === "voice" ? (
+          <VoiceMessage 
+            audioUrl={msg.audioUrl!}
+            duration={msg.duration || 0}
+            isCurrentUser={isOwnMessage}
+            timestamp={msg.timestamp}
+          />
+        ) : (
+          <div className="break-words">{msg.message}</div>
+        )}
+        
+        <div className={cn(
+          "text-xs mt-1",
+          isOwnMessage ? "text-primary-foreground/70" : "text-muted-foreground"
+        )}>
+          {formattedTime}
+        </div>
+      </div>
+    );
+  };
 
   // Handle messages from WebSocket
   useEffect(() => {
@@ -149,28 +222,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     if (onClose) onClose();
   };
 
-  const handleSendMessage = () => {
-    if (!message.trim()) return;
-
-    // Send the message via WebSocket
-    sendMessage({
-      type: "chat_message",
-      gameId,
-      playerId,
-      chatMessage: {
-        id: "temp-" + Date.now(), // Server will replace this
-        gameId,
-        playerId,
-        playerName,
-        message: message.trim(),
-        timestamp: Date.now(),
-        messageType: "text"
-      }
-    });
-
-    setMessage("");
-  };
-
   const handleRecordToggle = async () => {
     if (isRecording) {
       stopRecording();
@@ -199,180 +250,142 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         }
       });
       
-      // Clear recording after successful upload
+      // Clear the recording
       clearRecording();
     } catch (error) {
-      console.error('Error uploading voice message:', error);
+      console.error("Error uploading voice message:", error);
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
-  // Don't render anything if chat is not open
-  if (!isOpen) {
-    return null;
-  }
-
-  // Render message based on type
-  const renderMessage = (msg: ChatMessage) => {
-    const isCurrentUser = msg.playerId === playerId;
-    
-    if (msg.messageType === "voice") {
-      return (
-        <VoiceMessage 
-          audioUrl={msg.audioUrl!}
-          duration={msg.duration || 0}
-          isCurrentUser={isCurrentUser}
-          timestamp={msg.timestamp}
-        />
-      );
-    }
-    
-    // Default to text message
-    return (
-      <div 
-        className={cn(
-          "max-w-[85%] rounded-lg p-2.5",
-          isCurrentUser 
-            ? "bg-primary text-primary-foreground ml-auto" 
-            : "bg-secondary text-secondary-foreground"
-        )}
-      >
-        {!isCurrentUser && (
-          <div className="font-semibold text-xs mb-1">{msg.playerName}</div>
-        )}
-        <div>{msg.message}</div>
-        <div className="text-xs opacity-70 text-right mt-1">
-          {format(new Date(msg.timestamp), 'HH:mm')}
-        </div>
-      </div>
-    );
-  };
-
+  // Don't render anything if not open and component should be completely hidden
   return (
-    <Card className={cn(
-      "fixed z-50 flex flex-col",
-      "bottom-0 right-0 h-[75vh] w-full",
-      "landscape:h-full landscape:w-[300px]",
-      "sm:right-4 sm:bottom-4 sm:h-[50vh] sm:w-96 sm:rounded-lg",
-      "shadow-lg overflow-hidden"
-    )}>
-      {/* Chat header */}
-      <div className="flex items-center justify-between p-3 border-b">
-        <h3 className="font-semibold">Game Chat</h3>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="p-1 h-8 w-8"
-          onClick={handleClose}
-        >
-          <X size={18} />
-        </Button>
-      </div>
-
-      {/* Chat messages */}
+    <div className={`fixed inset-0 z-50 ${isOpen ? 'pointer-events-auto' : 'pointer-events-none opacity-0'}`}>
       <div 
-        className="flex-1 flex flex-col gap-2 p-3 overflow-y-auto"
-        ref={chatContainerRef}
+        className={`fixed inset-0 bg-black/40 transition-opacity duration-200 ${
+          isOpen ? 'opacity-100' : 'opacity-0'
+        }`} 
+        onClick={handleClose}
+      />
+      
+      <Card 
+        className={`fixed right-4 bottom-16 w-80 md:w-96 h-[70vh] max-h-[600px] z-50 shadow-lg overflow-hidden transition-transform duration-200 ${
+          isOpen 
+            ? 'translate-y-0 opacity-100' 
+            : 'translate-y-8 opacity-0'
+        }`}
       >
-        {chatMessages.length === 0 ? (
-          <div className="text-center text-muted-foreground text-sm py-4">
-            No messages yet. Start the conversation!
-          </div>
-        ) : (
-          chatMessages.map(msg => (
-            <div key={msg.id}>
-              {renderMessage(msg)}
+        <div className="h-full flex flex-col">
+          <div className="p-3 border-b flex justify-between items-center">
+            <div className="flex items-center">
+              <MessageCircle className="h-5 w-5 mr-2" />
+              <h3 className="font-semibold">Chat</h3>
             </div>
-          ))
-        )}
-      </div>
-
-      {/* Voice recording preview */}
-      {(isRecording || audioBlob) && (
-        <div className="p-3 border-t flex items-center gap-2">
-          {isRecording ? (
-            <div className="flex items-center gap-2 text-red-500">
-              <div className="voice-recorder-wave">
-                <div className="bar"></div>
-                <div className="bar"></div>
-                <div className="bar"></div>
-                <div className="bar"></div>
-                <div className="bar"></div>
-              </div>
-              <span className="text-sm">Recording... {duration.toFixed(1)}s</span>
-            </div>
-          ) : (
-            <div className="flex-1 text-sm">Voice message recorded ({duration.toFixed(1)}s)</div>
-          )}
-          
-          {audioBlob && !isRecording && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleSendVoiceMessage}
-              disabled={isUploading}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-8 w-8 p-0" 
+              onClick={handleClose}
             >
-              {isUploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Send"
-              )}
+              <X className="h-4 w-4" />
             </Button>
-          )}
+          </div>
           
-          <Button 
-            variant="outline"
-            size="sm"
-            onClick={isRecording ? stopRecording : clearRecording}
+          <div 
+            ref={chatContainerRef}
+            className="flex-grow overflow-y-auto p-3 flex flex-col gap-2"
           >
-            {isRecording ? "Stop" : "Cancel"}
-          </Button>
+            {chatMessages.length === 0 ? (
+              <div className="text-muted-foreground text-center mt-8">
+                <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No messages yet</p>
+                <p className="text-sm">Start a conversation!</p>
+              </div>
+            ) : (
+              chatMessages.map(renderMessage)
+            )}
+          </div>
+          
+          <div className="p-3 border-t">
+            {audioBlob && !isUploading ? (
+              <div className="mb-3 rounded-md border p-2">
+                <div className="text-xs text-muted-foreground mb-1">
+                  Voice message ({Math.round(duration)}s)
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="secondary" 
+                    size="sm" 
+                    className="h-8" 
+                    onClick={clearRecording}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    className="h-8 flex-grow" 
+                    onClick={handleSendVoiceMessage}
+                  >
+                    Send Voice Message
+                  </Button>
+                </div>
+              </div>
+            ) : isRecording ? (
+              <div className="recording-indicator mb-3 flex items-center gap-2 rounded-md border p-2">
+                <div className="recording-pulse"></div>
+                <span className="text-sm">Recording... {Math.round(duration)}s</span>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  className="h-7 ml-auto" 
+                  onClick={handleRecordToggle}
+                >
+                  <StopCircle className="h-4 w-4 mr-1" />
+                  Stop
+                </Button>
+              </div>
+            ) : null}
+            
+            {isUploading ? (
+              <div className="flex justify-center items-center h-10 mb-3">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                <span>Sending voice message...</span>
+              </div>
+            ) : null}
+          
+            <div className="flex gap-2">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-10 w-10 shrink-0"
+                onClick={handleRecordToggle}
+                disabled={isUploading || !!audioBlob}
+              >
+                <Mic className="h-5 w-5" />
+              </Button>
+              <Input
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type a message..."
+                className="h-10"
+                disabled={isRecording || isUploading || !!audioBlob}
+              />
+              <Button 
+                variant="default" 
+                size="icon" 
+                className="h-10 w-10 shrink-0"
+                onClick={handleSendMessage}
+                disabled={isRecording || isUploading || !!audioBlob || !message.trim()}
+              >
+                <Send className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
         </div>
-      )}
-
-      {/* Chat input */}
-      <div className="p-3 border-t flex gap-2">
-        <Input
-          placeholder="Type a message..."
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className="flex-1"
-          disabled={isRecording || !!audioBlob}
-        />
-        
-        {/* Record button */}
-        <Button 
-          onClick={handleRecordToggle}
-          size="icon"
-          variant={isRecording ? "destructive" : "outline"}
-          disabled={!!audioBlob && !isRecording}
-        >
-          {isRecording ? (
-            <StopCircle size={18} />
-          ) : (
-            <Mic size={18} />
-          )}
-        </Button>
-        
-        {/* Send text message button */}
-        <Button 
-          onClick={handleSendMessage}
-          disabled={!message.trim() || isRecording || !!audioBlob}
-          size="icon"
-        >
-          <Send size={18} />
-        </Button>
-      </div>
-    </Card>
+      </Card>
+    </div>
   );
 };
 

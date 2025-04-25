@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { MessageCircle } from "lucide-react";
-import ChatPanel from "@/components/ui/chat-panel";
+
+// Lazy load the ChatPanel component
+const ChatPanel = lazy(() => import("@/components/ui/chat-panel"));
 
 interface ChatButtonProps {
   gameId: string;
@@ -18,6 +20,15 @@ export const ChatButton: React.FC<ChatButtonProps> = ({
 }) => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isPanelMounted, setIsPanelMounted] = useState(false);
+
+  // Initialize panel with slight delay to prevent immediate mount during initial load
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsPanelMounted(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Reset state when props change (e.g., navigating between games)
   useEffect(() => {
@@ -52,14 +63,23 @@ export const ChatButton: React.FC<ChatButtonProps> = ({
         )}
       </Button>
 
-      <ChatPanel
-        gameId={gameId}
-        playerId={playerId}
-        playerName={playerName}
-        open={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
-        onUnreadCount={handleUnreadCountChange}
-      />
+      {/* Always render the ChatPanel but control visibility with CSS */}
+      {isPanelMounted && (
+        <Suspense fallback={
+          <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/40 ${!isChatOpen ? 'hidden' : ''}`}>
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+          </div>
+        }>
+          <ChatPanel
+            gameId={gameId}
+            playerId={playerId}
+            playerName={playerName}
+            open={isChatOpen}
+            onClose={() => setIsChatOpen(false)}
+            onUnreadCount={handleUnreadCountChange}
+          />
+        </Suspense>
+      )}
     </>
   );
 }; 

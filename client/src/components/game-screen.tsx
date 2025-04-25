@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,9 +17,6 @@ import { Card as CardType, GameState, Player, WebSocketMessage } from "@shared/s
 import CardComponent from "@/components/ui/card-component";
 import PlayerAvatar from "@/components/ui/player-avatar";
 import RoomCodeDisplay from "@/components/ui/room-code-display";
-import PickCardModal from "@/components/modals/pick-card-modal";
-import RoundEndModal from "@/components/modals/round-end-modal";
-import GameEndModal from "@/components/modals/game-end-modal";
 import { 
   LogOut, 
   SkipForward,
@@ -38,8 +35,20 @@ import {
   RefreshCw
 } from "lucide-react";
 import { isValidCardSet, sortCards } from "@/lib/card-utils";
-import ChatPanel from "@/components/ui/chat-panel";
 import { ChatButton } from "@/components/ui/chat-button";
+
+// Lazy load heavy components
+const PickCardModal = lazy(() => import("@/components/modals/pick-card-modal"));
+const RoundEndModal = lazy(() => import("@/components/modals/round-end-modal"));
+const GameEndModal = lazy(() => import("@/components/modals/game-end-modal"));
+const ChatPanel = lazy(() => import("@/components/ui/chat-panel"));
+
+// Loading fallback for lazy-loaded components
+const ModalLoadingFallback = () => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+  </div>
+);
 
 const playerColors = [
   "#e53935", // red
@@ -882,32 +891,34 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       </main>
       
       {/* Modals */}
-      {showPickCardModal && (
-        <PickCardModal 
-          cards={cardsToPickFrom}
-          onPickCard={handlePickCard}
-          isLoading={pickCardMutation.isPending}
-        />
-      )}
-      
-      {showRoundEndModal && (
-        <RoundEndModal 
-          winnerName={roundWinnerName}
-          scores={roundScores}
-          onStartNextRound={handleStartNewRound}
-          isLoading={startNewRoundMutation.isPending}
-          isHost={currentPlayer.isHost}
-        />
-      )}
-      
-      {showGameEndModal && (
-        <GameEndModal 
-          winnerName={gameWinnerName}
-          scores={finalScores}
-          onNewGame={handleNewGame}
-          onBackToLobby={handleBackToLobby}
-        />
-      )}
+      <Suspense fallback={<ModalLoadingFallback />}>
+        {showPickCardModal && (
+          <PickCardModal 
+            cards={cardsToPickFrom}
+            onPickCard={handlePickCard}
+            isLoading={pickCardMutation.isPending}
+          />
+        )}
+        
+        {showRoundEndModal && (
+          <RoundEndModal 
+            winnerName={roundWinnerName}
+            scores={roundScores}
+            onStartNextRound={handleStartNewRound}
+            isLoading={startNewRoundMutation.isPending}
+            isHost={currentPlayer.isHost}
+          />
+        )}
+        
+        {showGameEndModal && (
+          <GameEndModal 
+            winnerName={gameWinnerName}
+            scores={finalScores}
+            onNewGame={handleNewGame}
+            onBackToLobby={handleBackToLobby}
+          />
+        )}
+      </Suspense>
       
       {/* Replace the ChatPanel with ChatButton */}
       {currentPlayer && (
