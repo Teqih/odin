@@ -196,8 +196,13 @@ const RoundEndModal: React.FC<RoundEndModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showConfetti, setShowConfetti] = useState(true);
-  // Sort scores by lowest cards (winner at top)
-  const sortedScores = [...scores].sort((a, b) => a.cards - b.cards);
+  // Sort scores by lowest cards (winner at top) and ensure winner shows +0
+  const sortedScores = [...scores].sort((a, b) => a.cards - b.cards)
+    .map((score, index) => ({
+      ...score,
+      // First player (index 0) is the winner, so they get 0 points
+      cards: index === 0 ? 0 : score.cards
+    }));
   
   useEffect(() => {
     // Hide confetti after 5 seconds
