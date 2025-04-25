@@ -937,7 +937,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
-  // Add fallback mechanism for audio conversion errors
+  // Add support for range requests in the audio download endpoint
   app.get("/api/voice-messages/:audioId", async (req, res) => {
     try {
       const audioId = req.params.audioId;
@@ -949,22 +949,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Voice message not found" });
       }
 
-      // Set headers for audio content
-      res.set("Content-Type", "audio/mpeg"); // Ensure correct format
-      res.set("Content-Length", audioData.length.toString());
-
-      // Send the audio data
-      return res.send(audioData);
-    } catch (error) {
-      console.error("Error retrieving voice message:", error);
-
-      // Serve a fallback audio file in case of errors
-      const fallbackAudioPath = path.join(__dirname, "fallback.mp3");
-      if (fs.existsSync(fallbackAudioPath)) {
+      const range = req.headers.range;
+      if (!range) {
+        // If no range header, send the entire file
         res.set("Content-Type", "audio/mpeg");
-        return res.sendFile(fallbackAudioPath);
+        res.set("Content-Length", audioData.length.toString());
+        return res.send(audioData);
       }
 
+      // Parse the range header
+      const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(startStr, 10);
+      const end = endStr ? parseInt(endStr, 10) : audioData.length - 1;
+
+      if (start >= audioData.length || end >= audioData.length) {
+        return res
+          .status(416)
+          .set("Content-Range", `bytes */${audioData.length}`)
+          .end();
+      }
+
+      const chunkSize = end - start + 1;
+      const chunk = audioData.slice(start, end + 1);
+
+      res
+        .status(206)
+        .set("Content-Range", `bytes ${start}-${end}/${audioData.length}`)
+        .set("Accept-Ranges", "bytes")
+        .set("Content-Length", chunkSize.toString())
+        .set("Content-Type", "audio/mpeg")
+        .send(chunk);
+    } catch (error) {
+      console.error("Error retrieving voice message:", error);
       return res.status(500).json({ error: "Server error" });
     }
   });
