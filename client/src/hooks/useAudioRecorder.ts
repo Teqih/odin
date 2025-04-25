@@ -1,25 +1,10 @@
 import { useState, useRef, useCallback } from 'react';
 
-// Add browser detection function
-const isIOS = () => {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-};
-
-// Determine the audio MIME type based on browser
-const getAudioMimeType = () => {
-  if (isIOS()) {
-    return 'audio/mp4';
-  }
-  return 'audio/webm';
-};
-
 interface AudioRecorderState {
   isRecording: boolean;
   isPaused: boolean;
   duration: number;
   audioBlob: Blob | null;
-  audioMimeType: string;
   error: string | null;
 }
 
@@ -37,7 +22,6 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
     isPaused: false,
     duration: 0,
     audioBlob: null,
-    audioMimeType: getAudioMimeType(),
     error: null,
   });
 
@@ -46,7 +30,6 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
   const audioChunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef<number>(0);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const mimeTypeRef = useRef<string>(getAudioMimeType());
 
   const clearRecordingData = useCallback(() => {
     // Clear audio chunks
@@ -76,22 +59,8 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Get the MIME type for this recording
-      mimeTypeRef.current = getAudioMimeType();
-      
-      // Create media recorder with appropriate MIME type
-      let mediaRecorder;
-      try {
-        // Try with the detected MIME type
-        mediaRecorder = new MediaRecorder(stream, { mimeType: mimeTypeRef.current });
-      } catch (e) {
-        // If that fails, fall back to browser default
-        console.warn(`MediaRecorder doesn't support ${mimeTypeRef.current}, using default`);
-        mediaRecorder = new MediaRecorder(stream);
-        // Still track what MIME type we're using
-        mimeTypeRef.current = mediaRecorder.mimeType || 'audio/webm';
-      }
-      
+      // Create media recorder
+      const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       
       // Set up data handler
@@ -104,13 +73,12 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
 
       // Handle recording stop
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeTypeRef.current });
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         setState(prev => ({ 
           ...prev, 
           isRecording: false, 
           isPaused: false,
-          audioBlob,
-          audioMimeType: mimeTypeRef.current
+          audioBlob
         }));
       };
 
@@ -124,12 +92,7 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
         setState(prev => ({ ...prev, duration: currentDuration }));
       }, 100);
 
-      setState(prev => ({ 
-        ...prev, 
-        isRecording: true, 
-        audioBlob: null,
-        audioMimeType: mimeTypeRef.current
-      }));
+      setState(prev => ({ ...prev, isRecording: true, audioBlob: null }));
     } catch (error) {
       console.error('Error starting recording:', error);
       setState(prev => ({ 
@@ -195,7 +158,6 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
       isPaused: false,
       duration: 0,
       audioBlob: null,
-      audioMimeType: getAudioMimeType(),
       error: null,
     });
   }, [clearRecordingData]);

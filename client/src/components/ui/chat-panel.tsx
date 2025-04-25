@@ -242,17 +242,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     try {
       setIsUploading(true);
       
-      // Determine file extension based on MIME type
-      const fileExtension = audioBlob.type === 'audio/mp4' ? '.m4a' : '.webm';
-      const fileName = `voice-message${fileExtension}`;
-      
       // Create form data for upload
       const formData = new FormData();
-      formData.append('audio', audioBlob, fileName);
+      formData.append('audio', audioBlob, 'voice-message.webm');
       formData.append('playerId', playerId);
       formData.append('playerName', playerName);
       formData.append('duration', duration.toString());
-      formData.append('mimeType', audioBlob.type);
       
       // Upload the voice message
       await axios.post(`/api/games/${gameId}/voice-message`, formData, {

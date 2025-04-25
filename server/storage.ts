@@ -34,17 +34,8 @@ export interface IStorage {
   getAllActiveGames(): Promise<GameState[]>;
   
   // Chat methods
-  saveChatMessage(
-    gameId: string, 
-    playerId: string, 
-    playerName: string, 
-    message: string,
-    messageType?: MessageType, 
-    audioUrl?: string,
-    duration?: number,
-    mimeType?: string
-  ): Promise<ChatMessage>;
-  storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer, mimeType?: string): Promise<string>;
+  saveChatMessage(gameId: string, playerId: string, playerName: string, message: string, messageType?: MessageType, audioUrl?: string, duration?: number): Promise<ChatMessage>;
+  storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer): Promise<string>;
   getChatMessages(gameId: string): Promise<ChatMessage[]>;
   clearChatMessages(gameId: string): Promise<void>;
 }
@@ -67,7 +58,7 @@ export class MemStorage implements IStorage {
   private roomCodes: Map<string, string>; // Maps room codes to game IDs
   private currentId: number;
   private chatMessages: Map<string, ChatMessage[]>;
-  private audioMessages: Map<string, { buffer: Buffer, mimeType: string, timestamp: number }>; // To store audio message data
+  private audioMessages: Map<string, Buffer>; // To store audio message data
 
   constructor() {
     this.users = new Map();
@@ -546,8 +537,7 @@ export class MemStorage implements IStorage {
     message: string,
     messageType: MessageType = "text",
     audioUrl?: string,
-    duration?: number,
-    mimeType?: string
+    duration?: number
   ): Promise<ChatMessage> {
     if (!this.chatMessages.has(gameId)) {
       this.chatMessages.set(gameId, []);
@@ -562,8 +552,7 @@ export class MemStorage implements IStorage {
       timestamp: Date.now(),
       messageType,
       audioUrl,
-      duration,
-      mimeType
+      duration
     };
     
     this.chatMessages.get(gameId)!.push(chatMessage);
@@ -577,15 +566,9 @@ export class MemStorage implements IStorage {
     return chatMessage;
   }
 
-  async storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer, mimeType: string = 'audio/webm'): Promise<string> {
+  async storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer): Promise<string> {
     const audioId = `voice-${gameId}-${playerId}-${Date.now()}`;
-    
-    // Store the audio data with its MIME type
-    this.audioMessages.set(audioId, {
-      buffer: audioData,
-      mimeType,
-      timestamp: Date.now()
-    });
+    this.audioMessages.set(audioId, audioData);
     
     // Set a TTL for audio messages (7 days)
     setTimeout(() => {

@@ -2,25 +2,31 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { 
-  CreateGameRequest, 
-  JoinGameRequest, 
-  PlayCardsRequest, 
-  PickCardRequest, 
+import {
+  CreateGameRequest,
+  JoinGameRequest,
+  PlayCardsRequest,
+  PickCardRequest,
   PassTurnRequest,
   WebSocketMessage,
   GameState,
   Card,
   CardColor,
   CardValue,
-  ChatMessage
+  ChatMessage,
 } from "@shared/schema";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { filterGameStateForPlayer } from "./game";
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegPath from "ffmpeg-static";
+import { Readable, Writable } from "stream";
+
+// Set the path for ffmpeg
+ffmpeg.setFfmpegPath(ffmpegPath!);
 
 // Map of connected clients by game ID and player ID
 const connections = new Map<string, Map<string, WebSocket>>();
@@ -47,8 +53,10 @@ const upload = multer({
 function broadcastGameState(gameId: string, gameState: GameState) {
   const gameConnections = connections.get(gameId);
   if (!gameConnections) return;
-  
-  console.log(`Broadcasting game state to ${gameConnections.size} players in game ${gameId}`);
+
+  console.log(
+    `Broadcasting game state to ${gameConnections.size} players in game ${gameId}`
+  );
 
   // Track which players received the update successfully
   const failedConnections: Array<[string, WebSocket]> = [];
@@ -59,13 +67,13 @@ function broadcastGameState(gameId: string, gameState: GameState) {
       try {
         // Filter the game state to hide other players' cards
         const filteredState = filterGameStateForPlayer(gameState, playerId);
-        
+
         const message: WebSocketMessage = {
           type: "turn_update",
           gameId,
-          gameState: filteredState
+          gameState: filteredState,
         };
-        
+
         socket.send(JSON.stringify(message));
         // Update last message time
         lastMessageTime.set(socket, Date.now());
@@ -83,10 +91,12 @@ function broadcastGameState(gameId: string, gameState: GameState) {
 
   // Clean up any failed connections
   for (const [playerId, socket] of failedConnections) {
-    console.log(`Removing stale connection for player ${playerId} in game ${gameId}`);
+    console.log(
+      `Removing stale connection for player ${playerId} in game ${gameId}`
+    );
     gameConnections.delete(playerId);
     lastMessageTime.delete(socket);
-    
+
     // Mark player as disconnected in game state
     markPlayerDisconnected(gameId, playerId);
   }
@@ -102,7 +112,7 @@ function updatePlayerActivity(gameId: string, playerId: string) {
   if (!lastPlayerActivity.has(gameId)) {
     lastPlayerActivity.set(gameId, new Map());
   }
-  
+
   lastPlayerActivity.get(gameId)!.set(playerId, Date.now());
 }
 
@@ -118,17 +128,19 @@ async function markPlayerDisconnected(gameId: string, playerId: string) {
         lastPlayerActivity.delete(gameId);
       }
     }
-    
+
     // Check if the game exists before trying to update the player connection
     const game = await storage.getGame(gameId);
     if (!game) {
-      console.log(`Game ${gameId} not found when disconnecting player ${playerId}`);
+      console.log(
+        `Game ${gameId} not found when disconnecting player ${playerId}`
+      );
       return; // Exit early if game doesn't exist
     }
-    
+
     // Mark player as disconnected in the game state
     await storage.updatePlayerConnection(gameId, playerId, false);
-    
+
     // Fetch updated game state and broadcast to remaining players
     const updatedGame = await storage.getGame(gameId);
     if (updatedGame) {
@@ -144,31 +156,32 @@ function setupPingInterval(wss: WebSocketServer) {
   if (pingInterval) {
     clearInterval(pingInterval);
   }
-  
+
   pingInterval = setInterval(() => {
     const now = Date.now();
-    
-    wss.clients.forEach(socket => {
+
+    wss.clients.forEach((socket) => {
       if (socket.readyState === WebSocket.OPEN) {
         try {
           // Send ping to verify connection
           socket.ping();
-          
+
           // Check if we haven't sent any messages in a while
           const lastTime = lastMessageTime.get(socket) || 0;
-          if (now - lastTime > 30000) { // 30 seconds
+          if (now - lastTime > 30000) {
+            // 30 seconds
             // Send an empty ping message to keep connection alive
             const pingMessage: WebSocketMessage = { type: "ping" };
             socket.send(JSON.stringify(pingMessage));
             lastMessageTime.set(socket, now);
           }
         } catch (err) {
-          console.error('Error pinging client:', err);
+          console.error("Error pinging client:", err);
           // Close the socket if we can't ping it
           try {
             socket.terminate();
           } catch (e) {
-            console.error('Error terminating socket:', e);
+            console.error("Error terminating socket:", e);
           }
         }
       }
@@ -181,16 +194,20 @@ function setupPlayerActivityCheck() {
   if (playerActivityInterval) {
     clearInterval(playerActivityInterval);
   }
-  
+
   playerActivityInterval = setInterval(async () => {
     const now = Date.now();
-    
+
     // Check each game for inactive players
-    for (const [gameId, playerMap] of Array.from(lastPlayerActivity.entries())) {
+    for (const [gameId, playerMap] of Array.from(
+      lastPlayerActivity.entries()
+    )) {
       for (const [playerId, lastActive] of Array.from(playerMap.entries())) {
         if (now - lastActive > CONNECTION_TIMEOUT) {
-          console.log(`Player ${playerId} in game ${gameId} inactive for too long, marking as disconnected`);
-          
+          console.log(
+            `Player ${playerId} in game ${gameId} inactive for too long, marking as disconnected`
+          );
+
           // Get the player's socket if it exists
           const gameConnections = connections.get(gameId);
           if (gameConnections) {
@@ -200,15 +217,15 @@ function setupPlayerActivityCheck() {
               try {
                 socket.terminate();
               } catch (e) {
-                console.error('Error terminating inactive socket:', e);
+                console.error("Error terminating inactive socket:", e);
               }
-              
+
               // Remove the connection
               gameConnections.delete(playerId);
               lastMessageTime.delete(socket);
             }
           }
-          
+
           // Mark the player as disconnected
           await markPlayerDisconnected(gameId, playerId);
         }
@@ -222,15 +239,17 @@ async function broadcastChatMessage(chatMessage: ChatMessage) {
   const gameId = chatMessage.gameId;
   const gameConnections = connections.get(gameId);
   if (!gameConnections) return;
-  
-  console.log(`Broadcasting chat message from ${chatMessage.playerName} to ${gameConnections.size} players in game ${gameId}`);
+
+  console.log(
+    `Broadcasting chat message from ${chatMessage.playerName} to ${gameConnections.size} players in game ${gameId}`
+  );
 
   const message: WebSocketMessage = {
     type: "chat_message",
     gameId,
-    chatMessage
+    chatMessage,
   };
-  
+
   // Track which players received the message successfully
   const failedConnections: Array<[string, WebSocket]> = [];
 
@@ -244,7 +263,10 @@ async function broadcastChatMessage(chatMessage: ChatMessage) {
         // Update player activity time
         updatePlayerActivity(gameId, playerId);
       } catch (error) {
-        console.error(`Error sending chat message to player ${playerId}:`, error);
+        console.error(
+          `Error sending chat message to player ${playerId}:`,
+          error
+        );
         failedConnections.push([playerId, socket]);
       }
     } else {
@@ -255,10 +277,12 @@ async function broadcastChatMessage(chatMessage: ChatMessage) {
 
   // Clean up any failed connections
   for (const [playerId, socket] of failedConnections) {
-    console.log(`Removing stale connection for player ${playerId} in game ${gameId}`);
+    console.log(
+      `Removing stale connection for player ${playerId} in game ${gameId}`
+    );
     gameConnections.delete(playerId);
     lastMessageTime.delete(socket);
-    
+
     // Mark player as disconnected in game state
     markPlayerDisconnected(gameId, playerId);
   }
@@ -266,55 +290,65 @@ async function broadcastChatMessage(chatMessage: ChatMessage) {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
-  
+
   // Set up WebSocket server
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-  
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+
   // Setup ping interval to keep connections alive
   setupPingInterval(wss);
-  
+
   // Setup player activity check
   setupPlayerActivityCheck();
-  
-  wss.on('connection', (socket: WebSocket) => {
-    console.log('WebSocket client connected');
+
+  wss.on("connection", (socket: WebSocket) => {
+    console.log("WebSocket client connected");
     lastMessageTime.set(socket, Date.now());
-    
+
     let clientGameId: string | null = null;
     let clientPlayerId: string | null = null;
-    
-    socket.on('message', async (data) => {
+
+    socket.on("message", async (data) => {
       try {
         const message: WebSocketMessage = JSON.parse(data.toString());
         // Update the last message time
         lastMessageTime.set(socket, Date.now());
-        
-        if (message.type === 'connect' && message.gameId && message.playerId) {
+
+        if (message.type === "connect" && message.gameId && message.playerId) {
           // Check if this player is already connected with a different socket
           const existingGameConnections = connections.get(message.gameId);
           if (existingGameConnections) {
-            const existingSocket = existingGameConnections.get(message.playerId);
-            if (existingSocket && existingSocket !== socket && existingSocket.readyState === WebSocket.OPEN) {
+            const existingSocket = existingGameConnections.get(
+              message.playerId
+            );
+            if (
+              existingSocket &&
+              existingSocket !== socket &&
+              existingSocket.readyState === WebSocket.OPEN
+            ) {
               // Player already has an active connection - close the old one
-              console.log(`Player ${message.playerId} already connected, closing previous connection`);
-              
+              console.log(
+                `Player ${message.playerId} already connected, closing previous connection`
+              );
+
               // Close the existing socket - send a disconnect notification first
               try {
-                existingSocket.send(JSON.stringify({
-                  type: "error",
-                  error: "You connected from another device or browser tab."
-                }));
+                existingSocket.send(
+                  JSON.stringify({
+                    type: "error",
+                    error: "You connected from another device or browser tab.",
+                  })
+                );
                 existingSocket.close(1000, "Replaced by new connection");
               } catch (e) {
-                console.error('Error closing existing socket:', e);
+                console.error("Error closing existing socket:", e);
               }
-              
+
               // Remove the old connection
               existingGameConnections.delete(message.playerId);
               lastMessageTime.delete(existingSocket);
             }
           }
-          
+
           // If client was already connected to a different game, disconnect from that first
           if (clientGameId && clientGameId !== message.gameId) {
             const oldGameConnections = connections.get(clientGameId);
@@ -323,63 +357,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (oldGameConnections.size === 0) {
                 connections.delete(clientGameId);
               }
-              
+
               // Mark player as disconnected from previous game
               await markPlayerDisconnected(clientGameId, clientPlayerId!);
             }
           }
-          
+
           clientGameId = message.gameId;
           clientPlayerId = message.playerId;
-          
+
           // Store connection
           if (!connections.has(clientGameId)) {
             connections.set(clientGameId, new Map());
           }
           connections.get(clientGameId)!.set(clientPlayerId, socket);
-          
+
           // Update player activity time
           updatePlayerActivity(clientGameId, clientPlayerId);
-          
+
           // Mark player as connected
           const game = await storage.getGame(clientGameId);
           if (game) {
-            await storage.updatePlayerConnection(clientGameId, clientPlayerId, true);
+            await storage.updatePlayerConnection(
+              clientGameId,
+              clientPlayerId,
+              true
+            );
             // Immediately send the current game state to the newly connected player
             const updatedGame = await storage.getGame(clientGameId);
             if (updatedGame) {
               // Send only to this player
-              const filteredState = filterGameStateForPlayer(updatedGame, clientPlayerId);
-              socket.send(JSON.stringify({
-                type: "turn_update",
-                gameId: clientGameId,
-                gameState: filteredState
-              }));
+              const filteredState = filterGameStateForPlayer(
+                updatedGame,
+                clientPlayerId
+              );
+              socket.send(
+                JSON.stringify({
+                  type: "turn_update",
+                  gameId: clientGameId,
+                  gameState: filteredState,
+                })
+              );
               // Then broadcast to everyone
               broadcastGameState(clientGameId, updatedGame);
             }
           }
-        } else if (message.type === 'ping') {
+        } else if (message.type === "ping") {
           // Respond to ping with pong
-          socket.send(JSON.stringify({ type: 'pong' }));
-          
+          socket.send(JSON.stringify({ type: "pong" }));
+
           // Update activity time for the player when they ping
           if (clientGameId && clientPlayerId) {
             updatePlayerActivity(clientGameId, clientPlayerId);
           }
-        } else if (message.type === 'chat_message') {
-          if (message.gameId && message.playerId && message.chatMessage?.message) {
+        } else if (message.type === "chat_message") {
+          if (
+            message.gameId &&
+            message.playerId &&
+            message.chatMessage?.message
+          ) {
             try {
-              // Check that the game exists
+              // Get player info to attach the right name
               const game = await storage.getGame(message.gameId);
-              if (!game) return;
-              
-              // Find the player
-              const player = game.players.find(p => p.id === message.playerId);
-              if (!player) return;
-              
-              // Get message properties with defaults
-              const messageType = message.chatMessage.messageType || 'text';
+              if (!game) {
+                console.error(
+                  `Game ${message.gameId} not found for chat message`
+                );
+                return;
+              }
+
+              const player = game.players.find(
+                (p) => p.id === message.playerId
+              );
+              if (!player) {
+                console.error(
+                  `Player ${message.playerId} not found in game ${message.gameId} for chat message`
+                );
+                return;
+              }
+
+              // Save and broadcast the chat message
+              const messageType = message.chatMessage.messageType || "text";
               const chatMessage = await storage.saveChatMessage(
                 message.gameId,
                 message.playerId,
@@ -387,28 +445,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 message.chatMessage.message,
                 messageType,
                 message.chatMessage.audioUrl,
-                message.chatMessage.duration,
-                message.chatMessage.mimeType
+                message.chatMessage.duration
               );
-              
+
               await broadcastChatMessage(chatMessage);
             } catch (error) {
-              console.error('Error processing chat message:', error);
+              console.error("Error handling chat message:", error);
             }
-            return;
           }
-        } else if (message.type === 'chat_history') {
+        } else if (message.type === "chat_history") {
           if (message.gameId && message.playerId) {
             try {
               const chatHistory = await storage.getChatMessages(message.gameId);
-              
+
               const historyMessage: WebSocketMessage = {
                 type: "chat_history",
                 gameId: message.gameId,
                 playerId: message.playerId,
-                chatHistory
+                chatHistory,
               };
-              
+
               socket.send(JSON.stringify(historyMessage));
             } catch (error) {
               console.error("Error sending chat history:", error);
@@ -416,14 +472,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       } catch (error) {
-        console.error('WebSocket message error:', error);
+        console.error("WebSocket message error:", error);
       }
     });
-    
-    socket.on('close', async () => {
-      console.log('WebSocket client disconnected');
+
+    socket.on("close", async () => {
+      console.log("WebSocket client disconnected");
       lastMessageTime.delete(socket);
-      
+
       if (clientGameId && clientPlayerId) {
         // Remove connection
         const gameConnections = connections.get(clientGameId);
@@ -432,396 +488,484 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const currentSocket = gameConnections.get(clientPlayerId);
           if (currentSocket === socket) {
             gameConnections.delete(clientPlayerId);
-            
+
             // If no connections left for this game, clean up
             if (gameConnections.size === 0) {
               connections.delete(clientGameId);
             }
-            
+
             // Mark player as disconnected
             await markPlayerDisconnected(clientGameId, clientPlayerId);
           }
         }
       }
     });
-    
-    socket.on('error', (error) => {
-      console.error('WebSocket error:', error);
+
+    socket.on("error", (error) => {
+      console.error("WebSocket error:", error);
       lastMessageTime.delete(socket);
-      
+
       // Forcefully terminate the socket on error
       try {
         socket.terminate();
       } catch (e) {
-        console.error('Error terminating socket after error:', e);
+        console.error("Error terminating socket after error:", e);
       }
-      
+
       // Mark player as disconnected if we have their info
       if (clientGameId && clientPlayerId) {
-        markPlayerDisconnected(clientGameId, clientPlayerId).catch(e => {
-          console.error('Error marking player disconnected after socket error:', e);
+        markPlayerDisconnected(clientGameId, clientPlayerId).catch((e) => {
+          console.error(
+            "Error marking player disconnected after socket error:",
+            e
+          );
         });
       }
     });
-    
-    socket.on('pong', () => {
+
+    socket.on("pong", () => {
       // Update last activity time when we receive a pong response
       lastMessageTime.set(socket, Date.now());
-      
+
       // Update player activity
       if (clientGameId && clientPlayerId) {
         updatePlayerActivity(clientGameId, clientPlayerId);
       }
     });
   });
-  
+
   // API Routes
   // Create a new game
-  app.post('/api/games', async (req: Request, res: Response) => {
+  app.post("/api/games", async (req: Request, res: Response) => {
     try {
       const createGameSchema = z.object({
         playerName: z.string().min(1).max(20),
-        pointLimit: z.number().int().min(5).max(50)
+        pointLimit: z.number().int().min(5).max(50),
       });
-      
-      const validatedData = createGameSchema.parse(req.body as CreateGameRequest);
-      const game = await storage.createGame(validatedData.playerName, validatedData.pointLimit);
-      
+
+      const validatedData = createGameSchema.parse(
+        req.body as CreateGameRequest
+      );
+      const game = await storage.createGame(
+        validatedData.playerName,
+        validatedData.pointLimit
+      );
+
       res.status(201).json({
         gameId: game.id,
         roomCode: game.roomCode,
-        playerId: game.players[0].id
+        playerId: game.players[0].id,
       });
     } catch (error) {
-      console.error('Create game error:', error);
+      console.error("Create game error:", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.message });
       }
-      res.status(500).json({ message: 'Failed to create game' });
+      res.status(500).json({ message: "Failed to create game" });
     }
   });
-  
+
   // Join an existing game
-  app.post('/api/games/join', async (req: Request, res: Response) => {
+  app.post("/api/games/join", async (req: Request, res: Response) => {
     try {
       const joinGameSchema = z.object({
         playerName: z.string().min(1).max(20),
-        roomCode: z.string().length(6)
+        roomCode: z.string().length(6),
       });
-      
+
       const validatedData = joinGameSchema.parse(req.body as JoinGameRequest);
       const game = await storage.getGameByRoomCode(validatedData.roomCode);
-      
+
       if (!game) {
-        return res.status(404).json({ message: 'Game not found' });
+        return res.status(404).json({ message: "Game not found" });
       }
-      
-      if (game.status !== 'waiting') {
-        return res.status(400).json({ message: 'Game has already started' });
+
+      if (game.status !== "waiting") {
+        return res.status(400).json({ message: "Game has already started" });
       }
-      
-      const updatedGame = await storage.addPlayerToGame(game.id, validatedData.playerName);
+
+      const updatedGame = await storage.addPlayerToGame(
+        game.id,
+        validatedData.playerName
+      );
       const newPlayer = updatedGame.players[updatedGame.players.length - 1];
-      
+
       // Broadcast player joined to all clients
       broadcastGameState(game.id, updatedGame);
-      
+
       res.status(200).json({
         gameId: game.id,
         roomCode: game.roomCode,
-        playerId: newPlayer.id
+        playerId: newPlayer.id,
       });
     } catch (error) {
-      console.error('Join game error:', error);
+      console.error("Join game error:", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.message });
       }
-      res.status(500).json({ message: 'Failed to join game' });
+      res.status(500).json({ message: "Failed to join game" });
     }
   });
-  
+
   // Get game state
-  app.get('/api/games/:gameId', async (req: Request, res: Response) => {
+  app.get("/api/games/:gameId", async (req: Request, res: Response) => {
     try {
       const { gameId } = req.params;
       const { playerId } = req.query;
-      
-      if (!playerId || typeof playerId !== 'string') {
-        return res.status(400).json({ message: 'Player ID is required' });
+
+      if (!playerId || typeof playerId !== "string") {
+        return res.status(400).json({ message: "Player ID is required" });
       }
-      
+
       const game = await storage.getGame(gameId);
-      
+
       if (!game) {
-        return res.status(404).json({ message: 'Game not found' });
+        return res.status(404).json({ message: "Game not found" });
       }
-      
-      const player = game.players.find(p => p.id === playerId);
+
+      const player = game.players.find((p) => p.id === playerId);
       if (!player) {
-        return res.status(403).json({ message: 'Player not in game' });
+        return res.status(403).json({ message: "Player not in game" });
       }
-      
+
       // Filter game state to hide other players' cards
       const filteredState = filterGameStateForPlayer(game, playerId);
-      
+
       res.status(200).json(filteredState);
     } catch (error) {
-      console.error('Get game error:', error);
-      res.status(500).json({ message: 'Failed to get game' });
+      console.error("Get game error:", error);
+      res.status(500).json({ message: "Failed to get game" });
     }
   });
-  
+
   // Start the game
-  app.post('/api/games/:gameId/start', async (req: Request, res: Response) => {
+  app.post("/api/games/:gameId/start", async (req: Request, res: Response) => {
     try {
       const { gameId } = req.params;
       const { playerId } = req.body;
-      
+
       if (!playerId) {
-        return res.status(400).json({ message: 'Player ID is required' });
+        return res.status(400).json({ message: "Player ID is required" });
       }
-      
+
       const game = await storage.getGame(gameId);
-      
+
       if (!game) {
-        return res.status(404).json({ message: 'Game not found' });
+        return res.status(404).json({ message: "Game not found" });
       }
-      
-      const player = game.players.find(p => p.id === playerId);
+
+      const player = game.players.find((p) => p.id === playerId);
       if (!player) {
-        return res.status(403).json({ message: 'Player not in game' });
+        return res.status(403).json({ message: "Player not in game" });
       }
-      
+
       if (!player.isHost) {
-        return res.status(403).json({ message: 'Only the host can start the game' });
+        return res
+          .status(403)
+          .json({ message: "Only the host can start the game" });
       }
-      
+
       const updatedGame = await storage.startGame(gameId);
-      
+
       // Broadcast game started to all clients
       broadcastGameState(gameId, updatedGame);
-      
+
       res.status(200).json({ success: true });
     } catch (error) {
-      console.error('Start game error:', error);
-      res.status(500).json({ message: 'Failed to start game' });
+      console.error("Start game error:", error);
+      res.status(500).json({ message: "Failed to start game" });
     }
   });
-  
+
   // Play cards
-  app.post('/api/games/:gameId/play', async (req: Request, res: Response) => {
+  app.post("/api/games/:gameId/play", async (req: Request, res: Response) => {
     try {
       const { gameId } = req.params;
       const playCardsSchema = z.object({
         playerId: z.string(),
-        cards: z.array(z.object({
-          id: z.string(),
-          color: z.enum(["red", "blue", "green", "yellow", "purple", "orange"]),
-          value: z.number().int().min(1).max(9)
-        })).min(1)
+        cards: z
+          .array(
+            z.object({
+              id: z.string(),
+              color: z.enum([
+                "red",
+                "blue",
+                "green",
+                "yellow",
+                "purple",
+                "orange",
+              ]),
+              value: z
+                .enum(["1", "2", "3", "4", "5", "6", "7", "8", "9"])
+                .transform((val) => parseInt(val, 10) as CardValue),
+            })
+          )
+          .min(1),
       });
-      
+
       const validatedData = playCardsSchema.parse(req.body as PlayCardsRequest);
-      
+
       const game = await storage.getGame(gameId);
-      
+
       if (!game) {
-        return res.status(404).json({ message: 'Game not found' });
+        return res.status(404).json({ message: "Game not found" });
       }
-      
+
       try {
-        const updatedGame = await storage.playCards(gameId, validatedData.playerId, validatedData.cards);
-        
+        const updatedGame = await storage.playCards(
+          gameId,
+          validatedData.playerId,
+          validatedData.cards
+        );
+
         // Broadcast updated state to all clients
         broadcastGameState(gameId, updatedGame);
-        
+
         res.status(200).json({ success: true });
       } catch (error) {
-        return res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid play' });
+        return res
+          .status(400)
+          .json({
+            message: error instanceof Error ? error.message : "Invalid play",
+          });
       }
     } catch (error) {
-      console.error('Play cards error:', error);
+      console.error("Play cards error:", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.message });
       }
-      res.status(500).json({ message: 'Failed to play cards' });
+      res.status(500).json({ message: "Failed to play cards" });
     }
   });
-  
+
   // Pick a card after playing
-  app.post('/api/games/:gameId/pick', async (req: Request, res: Response) => {
+  app.post("/api/games/:gameId/pick", async (req: Request, res: Response) => {
     try {
       const { gameId } = req.params;
       const pickCardSchema = z.object({
         playerId: z.string(),
-        cardId: z.string()
+        cardId: z.string(),
       });
-      
+
       const validatedData = pickCardSchema.parse(req.body as PickCardRequest);
-      
+
       const game = await storage.getGame(gameId);
-      
+
       if (!game) {
-        return res.status(404).json({ message: 'Game not found' });
+        return res.status(404).json({ message: "Game not found" });
       }
-      
+
       try {
-        const updatedGame = await storage.pickCard(gameId, validatedData.playerId, validatedData.cardId);
-        
+        const updatedGame = await storage.pickCard(
+          gameId,
+          validatedData.playerId,
+          validatedData.cardId
+        );
+
         // Broadcast updated state to all clients
         broadcastGameState(gameId, updatedGame);
-        
+
         res.status(200).json({ success: true });
       } catch (error) {
-        return res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid pick' });
+        return res
+          .status(400)
+          .json({
+            message: error instanceof Error ? error.message : "Invalid pick",
+          });
       }
     } catch (error) {
-      console.error('Pick card error:', error);
+      console.error("Pick card error:", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.message });
       }
-      res.status(500).json({ message: 'Failed to pick card' });
+      res.status(500).json({ message: "Failed to pick card" });
     }
   });
-  
+
   // Pass turn
-  app.post('/api/games/:gameId/pass', async (req: Request, res: Response) => {
+  app.post("/api/games/:gameId/pass", async (req: Request, res: Response) => {
     try {
       const { gameId } = req.params;
       const passTurnSchema = z.object({
-        playerId: z.string()
+        playerId: z.string(),
       });
-      
+
       const validatedData = passTurnSchema.parse(req.body as PassTurnRequest);
-      
+
       const game = await storage.getGame(gameId);
-      
+
       if (!game) {
-        return res.status(404).json({ message: 'Game not found' });
+        return res.status(404).json({ message: "Game not found" });
       }
-      
+
       try {
-        const updatedGame = await storage.passTurn(gameId, validatedData.playerId);
-        
+        const updatedGame = await storage.passTurn(
+          gameId,
+          validatedData.playerId
+        );
+
         // Broadcast updated state to all clients
         broadcastGameState(gameId, updatedGame);
-        
+
         res.status(200).json({ success: true });
       } catch (error) {
-        return res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid pass' });
+        return res
+          .status(400)
+          .json({
+            message: error instanceof Error ? error.message : "Invalid pass",
+          });
       }
     } catch (error) {
-      console.error('Pass turn error:', error);
+      console.error("Pass turn error:", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.message });
       }
-      res.status(500).json({ message: 'Failed to pass turn' });
+      res.status(500).json({ message: "Failed to pass turn" });
     }
   });
-  
+
   // Start a new round
-  app.post('/api/games/:gameId/round', async (req: Request, res: Response) => {
+  app.post("/api/games/:gameId/round", async (req: Request, res: Response) => {
     try {
       const { gameId } = req.params;
       const { playerId } = req.body;
-      
+
       if (!playerId) {
-        return res.status(400).json({ message: 'Player ID is required' });
+        return res.status(400).json({ message: "Player ID is required" });
       }
-      
+
       const game = await storage.getGame(gameId);
-      
+
       if (!game) {
-        return res.status(404).json({ message: 'Game not found' });
+        return res.status(404).json({ message: "Game not found" });
       }
-      
-      const player = game.players.find(p => p.id === playerId);
+
+      const player = game.players.find((p) => p.id === playerId);
       if (!player) {
-        return res.status(403).json({ message: 'Player not in game' });
+        return res.status(403).json({ message: "Player not in game" });
       }
-      
+
       if (!player.isHost) {
-        return res.status(403).json({ message: 'Only the host can start a new round' });
+        return res
+          .status(403)
+          .json({ message: "Only the host can start a new round" });
       }
-      
+
       // Use the centralized storage method to start the new round
       const updatedGame = await storage.startNewRound(gameId);
-      
+
       // Broadcast updated state to all clients
       broadcastGameState(gameId, updatedGame);
-      
+
       res.status(200).json({ success: true });
     } catch (error) {
-      console.error('Start new round error:', error);
-      res.status(500).json({ message: 'Failed to start new round' });
+      console.error("Start new round error:", error);
+      res.status(500).json({ message: "Failed to start new round" });
     }
   });
 
   // Voice message upload endpoint
-  app.post('/api/games/:gameId/voice-message', upload.single('audio'), async (req, res) => {
-    try {
-      const gameId = req.params.gameId;
-      const playerId = req.body.playerId;
-      const playerName = req.body.playerName;
-      const duration = parseFloat(req.body.duration || '0');
-      const mimeType = req.body.mimeType || 'audio/webm'; // Default to webm if not specified
-      
-      if (!gameId || !playerId || !req.file) {
-        return res.status(400).json({ error: 'Missing required parameters' });
+  app.post(
+    "/api/games/:gameId/voice-message",
+    upload.single("audio"),
+    async (req, res) => {
+      try {
+        const gameId = req.params.gameId;
+        const playerId = req.body.playerId;
+        const playerName = req.body.playerName;
+        const duration = parseFloat(req.body.duration || "0");
+
+        if (!gameId || !playerId || !req.file) {
+          return res.status(400).json({ error: "Missing required parameters" });
+        }
+
+        // Get the game to verify it exists
+        const game = await storage.getGame(gameId);
+        if (!game) {
+          return res.status(404).json({ error: "Game not found" });
+        }
+
+        // Fix the ffmpeg input buffer issue by converting the buffer to a readable stream
+        const bufferToStream = (buffer: Buffer): Readable => {
+          const stream = new Readable();
+          stream.push(buffer);
+          stream.push(null);
+          return stream;
+        };
+
+        // Update the ffmpeg usage to use a Writable stream for output
+        const inputBuffer = req.file.buffer;
+        const inputStream = bufferToStream(inputBuffer);
+        const outputBuffer: Buffer = await new Promise((resolve, reject) => {
+          const chunks: Buffer[] = [];
+
+          const writableStream = new Writable({
+            write(chunk, encoding, callback) {
+              chunks.push(chunk);
+              callback();
+            },
+          });
+
+          ffmpeg(inputStream)
+            .inputFormat("webm")
+            .toFormat("mp3")
+            .on("error", (err) => reject(err))
+            .on("end", () => resolve(Buffer.concat(chunks)))
+            .pipe(writableStream);
+        });
+
+        // Store the converted audio file
+        const audioId = await storage.storeVoiceMessage(
+          gameId,
+          playerId,
+          outputBuffer
+        );
+
+        // Create a chat message for this voice message
+        const chatMessage = await storage.saveChatMessage(
+          gameId,
+          playerId,
+          playerName,
+          "Voice message", // Placeholder text for non-supporting clients
+          "voice",
+          `/api/voice-messages/${audioId}`,
+          duration
+        );
+
+        // Broadcast the message to all players
+        await broadcastChatMessage(chatMessage);
+
+        return res
+          .status(200)
+          .json({ success: true, messageId: chatMessage.id });
+      } catch (error) {
+        console.error("Error uploading voice message:", error);
+        return res.status(500).json({ error: "Server error" });
       }
-      
-      // Get the game to verify it exists
-      const game = await storage.getGame(gameId);
-      if (!game) {
-        return res.status(404).json({ error: 'Game not found' });
-      }
-      
-      // Store the audio file with its mime type
-      const audioId = await storage.storeVoiceMessage(gameId, playerId, req.file.buffer, mimeType);
-      
-      // Create a chat message for this voice message
-      const chatMessage = await storage.saveChatMessage(
-        gameId,
-        playerId,
-        playerName,
-        'Voice message', // Placeholder text for non-supporting clients
-        'voice',
-        `/api/voice-messages/${audioId}`,
-        duration,
-        mimeType
-      );
-      
-      // Broadcast the message to all players
-      await broadcastChatMessage(chatMessage);
-      
-      return res.status(200).json({ success: true, messageId: chatMessage.id });
-    } catch (error) {
-      console.error('Error uploading voice message:', error);
-      return res.status(500).json({ error: 'Server error' });
     }
-  });
-  
+  );
+
   // Voice message download endpoint
-  app.get('/api/voice-messages/:audioId', async (req, res) => {
+  app.get("/api/voice-messages/:audioId", async (req, res) => {
     try {
       const audioId = req.params.audioId;
-      
+
       // Get the audio data from storage
       const audioData = (storage as any).audioMessages.get(audioId);
-      
-      if (!audioData || !audioData.buffer) {
-        return res.status(404).json({ error: 'Voice message not found' });
+
+      if (!audioData) {
+        return res.status(404).json({ error: "Voice message not found" });
       }
-      
-      // Set headers for audio content with the stored mime type
-      res.set('Content-Type', audioData.mimeType || 'audio/webm');
-      res.set('Content-Length', audioData.buffer.length.toString());
-      
+
+      // Set headers for audio content
+      res.set("Content-Type", "audio/webm");
+      res.set("Content-Length", audioData.length.toString());
+
       // Send the audio data
-      return res.send(audioData.buffer);
+      return res.send(audioData);
     } catch (error) {
-      console.error('Error retrieving voice message:', error);
-      return res.status(500).json({ error: 'Server error' });
+      console.error("Error retrieving voice message:", error);
+      return res.status(500).json({ error: "Server error" });
     }
   });
 

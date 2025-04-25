@@ -119,7 +119,6 @@ export interface ChatMessage {
   messageType: MessageType;
   audioUrl?: string;
   duration?: number;
-  mimeType?: string;
 }
 
 export interface WebSocketMessage {
