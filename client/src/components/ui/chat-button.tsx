@@ -1,13 +1,10 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { MessageCircle } from "lucide-react";
 
-// Lazy load the ChatPanel component
-// Use a named import in a separate variable to avoid hooks errors
+// Lazy load the ChatPanel component with explicit chunk name
 const ChatPanelLazy = lazy(() => 
-  import("@/components/ui/chat-panel").then(module => ({ 
-    default: module.default 
-  }))
+  import(/* webpackChunkName: "chat-panel" */ "@/components/ui/chat-panel")
 );
 
 interface ChatButtonProps {

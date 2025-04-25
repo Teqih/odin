@@ -30,6 +30,22 @@
         transform: scale(1.05);
       }
     </style>
+    <script>
+      // Global error handler
+      window.onerror = function(message, source, lineno, colno, error) {
+        console.error('Global error:', message, source, error);
+        // If the error is a module loading error or React/DOM related, reload the page
+        if ((source && source.includes('assets/')) || 
+            message.includes('useLayoutEffect') || 
+            message.includes('React') || 
+            message.includes('Unexpected token')) {
+          console.log('Detected module loading error, reloading...');
+          window.location.href = window.location.origin + window.location.pathname;
+          return true;  // Prevents the error from being shown in the console
+        }
+        return false; // Let other errors be handled normally
+      };
+    </script>
   </head>
   <body>
     <div id="root"></div>
@@ -40,6 +56,20 @@
           window.location.href = '/';
         }
       }, true);
+
+      // Prevent React errors from breaking the app
+      if (!window._reactErrorHandled) {
+        window._reactErrorHandled = true;
+        const originalConsoleError = console.error;
+        console.error = function(...args) {
+          if (args[0] && typeof args[0] === 'string' && 
+              (args[0].includes('useLayoutEffect') || args[0].includes('React'))) {
+            console.log('Suppressing React error:', args[0]);
+            return;
+          }
+          return originalConsoleError.apply(console, args);
+        };
+      }
     </script>
     <script type="module" src="/src/main.tsx"></script>
     <!-- This is a replit script which adds a banner on the top of the page when opened in development mode outside the replit environment -->

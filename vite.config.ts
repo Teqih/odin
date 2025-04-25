@@ -49,39 +49,7 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        manualChunks: (id) => {
-          // React and related packages
-          if (
-            id.includes('node_modules/react') || 
-            id.includes('node_modules/react-dom') || 
-            id.includes('node_modules/scheduler') ||
-            id.includes('node_modules/use-sync-external-store')
-          ) {
-            return 'vendor-react';
-          }
-          
-          // UI related packages
-          if (
-            id.includes('node_modules/@radix-ui/') || 
-            id.includes('node_modules/lucide-react')
-          ) {
-            return 'vendor-ui';
-          }
-          
-          // State management
-          if (
-            id.includes('node_modules/@tanstack/') || 
-            id.includes('node_modules/wouter') || 
-            id.includes('node_modules/zod')
-          ) {
-            return 'vendor-state';
-          }
-          
-          // Other node_modules
-          if (id.includes('node_modules')) {
-            return 'vendor-deps';
-          }
-        },
+        manualChunks: {},
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]'

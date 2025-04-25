@@ -5,10 +5,10 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { Suspense, lazy } from "react";
 
-// Lazy load page components
-const NotFound = lazy(() => import("@/pages/not-found"));
-const Home = lazy(() => import("@/pages/home"));
-const Game = lazy(() => import("@/pages/game"));
+// Lazy load page components with explicit chunkName
+const NotFound = lazy(() => import(/* webpackChunkName: "notfound" */ "@/pages/not-found"));
+const Home = lazy(() => import(/* webpackChunkName: "home" */ "@/pages/home"));
+const Game = lazy(() => import(/* webpackChunkName: "game" */ "@/pages/game"));
 
 // Loading fallback component
 const LoadingFallback = () => (
