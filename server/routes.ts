@@ -937,7 +937,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
-  // Voice message download endpoint
+  // Add fallback mechanism for audio conversion errors
   app.get("/api/voice-messages/:audioId", async (req, res) => {
     try {
       const audioId = req.params.audioId;
@@ -950,13 +950,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Set headers for audio content
-      res.set("Content-Type", "audio/mpeg"); // Updated to match mp3 format
+      res.set("Content-Type", "audio/mpeg"); // Ensure correct format
       res.set("Content-Length", audioData.length.toString());
 
       // Send the audio data
       return res.send(audioData);
     } catch (error) {
       console.error("Error retrieving voice message:", error);
+
+      // Serve a fallback audio file in case of errors
+      const fallbackAudioPath = path.join(__dirname, "fallback.mp3");
+      if (fs.existsSync(fallbackAudioPath)) {
+        res.set("Content-Type", "audio/mpeg");
+        return res.sendFile(fallbackAudioPath);
+      }
+
       return res.status(500).json({ error: "Server error" });
     }
   });
