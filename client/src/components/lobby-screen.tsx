@@ -162,7 +162,7 @@ const LobbyScreen: React.FC = () => {
   
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
-      <div className="absolute top-4 right-4">
+      <div className="absolute top-4 right-4 flex flex-wrap gap-2">
         <LanguageSelector />
       </div>
       

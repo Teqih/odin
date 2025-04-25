@@ -708,7 +708,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       {/* Game Header */}
-      <header className="bg-card shadow-md p-3 flex justify-between items-center">
+      <header className="bg-card shadow-md p-3 flex flex-wrap justify-between items-center">
         <div className="flex items-center">
           <h1 className="text-xl font-semibold text-primary">Odin Game</h1>
           <RoomCodeDisplay roomCode={safeGameState.roomCode} className="ml-4" />
