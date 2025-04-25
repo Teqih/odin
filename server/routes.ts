@@ -23,10 +23,14 @@ import path from "path";
 import fs from "fs";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegPath from "ffmpeg-static";
+import ffprobePath from "ffprobe-static";
 import { Readable, Writable } from "stream";
 
 // Set the path for ffmpeg
 ffmpeg.setFfmpegPath(ffmpegPath!);
+
+// Set the path for ffprobe
+ffmpeg.setFfprobePath(ffprobePath.path);
 
 // Map of connected clients by game ID and player ID
 const connections = new Map<string, Map<string, WebSocket>>();
@@ -285,6 +289,23 @@ async function broadcastChatMessage(chatMessage: ChatMessage) {
 
     // Mark player as disconnected in game state
     markPlayerDisconnected(gameId, playerId);
+  }
+}
+
+// Utility function to determine MIME type based on file extension
+function getMimeType(fileName: string): string {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  switch (extension) {
+    case "mp3":
+      return "audio/mpeg";
+    case "webm":
+      return "audio/webm";
+    case "wav":
+      return "audio/wav";
+    case "ogg":
+      return "audio/ogg";
+    default:
+      return "application/octet-stream";
   }
 }
 
@@ -879,6 +900,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ error: "Game not found" });
         }
 
+        console.log("Received voice message upload:", {
+          gameId,
+          playerId,
+          playerName,
+          duration,
+          fileExists: !!req.file,
+        });
+
         // Fix the ffmpeg input buffer issue by converting the buffer to a readable stream
         const bufferToStream = (buffer: Buffer): Readable => {
           const stream = new Readable();
@@ -898,13 +927,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .toFormat("mp3")
             .on("error", (err) => reject(err))
             .on("end", () => resolve(Buffer.concat(chunks)))
-            .pipe({
-              write: (chunk: Buffer) => {
-                chunks.push(chunk);
-                return true; // Return true to indicate successful write
-              },
-            });
+            .pipe(
+              new Writable({
+                write(chunk, encoding, callback) {
+                  chunks.push(chunk);
+                  callback(); // Signal that the chunk has been processed
+                },
+              })
+            );
         });
+
+        // Validate the converted audio file
+        if (!outputBuffer || outputBuffer.length === 0) {
+          return res.status(400).json({ error: "Invalid audio file" });
+        }
+
+        // Recalculate the duration using ffmpeg
+        const recalculatedDuration = await new Promise<number>(
+          (resolve, reject) => {
+            ffmpeg()
+              .input(Readable.from(outputBuffer))
+              .ffprobe((err, data) => {
+                if (err) return reject(err);
+                const duration = data.format.duration;
+                resolve(duration || 0);
+              });
+          }
+        );
+
+        if (recalculatedDuration === 0) {
+          return res.status(400).json({ error: "Audio duration is zero" });
+        }
 
         // Store the converted audio file
         const audioId = await storage.storeVoiceMessage(
@@ -931,7 +984,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(200)
           .json({ success: true, messageId: chatMessage.id });
       } catch (error) {
-        console.error("Error uploading voice message:", error);
+        if (error instanceof Error) {
+          console.error(
+            "Error uploading voice message:",
+            error.stack || error.message
+          );
+        } else {
+          console.error("Error uploading voice message:", error);
+        }
         return res.status(500).json({ error: "Server error" });
       }
     }
@@ -1000,6 +1060,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error retrieving voice message:", error);
       return res.status(500).json({ error: "Server error" });
     }
+  });
+
+  // Serve uploaded files with support for range requests
+  app.get("/uploads/:file", (req, res) => {
+    const filePath = path.join(__dirname, "uploads", req.params.file);
+    fs.stat(filePath, (err, stat) => {
+      if (err) return res.sendStatus(404);
+      const total = stat.size;
+      const range = req.headers.range;
+      if (range) {
+        const [startStr] = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(startStr, 10);
+        if (start >= total) {
+          res.status(416).set("Content-Range", `bytes */${total}`).end();
+          return;
+        }
+        const end = total - 1;
+        const chunkSize = end - start + 1;
+        res.writeHead(206, {
+          "Content-Range": `bytes ${start}-${end}/${total}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": chunkSize,
+          "Content-Type": getMimeType(req.params.file),
+        });
+        fs.createReadStream(filePath, { start, end }).pipe(res);
+      } else {
+        res.writeHead(200, {
+          "Content-Length": total,
+          "Content-Type": getMimeType(req.params.file),
+        });
+        fs.createReadStream(filePath).pipe(res);
+      }
+    });
   });
 
   return httpServer;
