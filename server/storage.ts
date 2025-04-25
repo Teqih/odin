@@ -12,13 +12,6 @@ import {
 import { nanoid } from "nanoid";
 import { startNewRound as startNewRoundLogic } from "./game"; // Import game logic
 
-// Voice message data structure
-interface VoiceMessageData {
-  buffer: Buffer;
-  format: string;
-  timestamp: number;
-}
-
 // Define storage interface with additional methods for game management
 export interface IStorage {
   // User methods
@@ -41,9 +34,17 @@ export interface IStorage {
   getAllActiveGames(): Promise<GameState[]>;
   
   // Chat methods
-  saveChatMessage(gameId: string, playerId: string, playerName: string, message: string, messageType?: MessageType, audioUrl?: string, duration?: number): Promise<ChatMessage>;
-  storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer, format?: string): Promise<string>;
-  getVoiceMessage(audioId: string): Promise<VoiceMessageData | undefined>;
+  saveChatMessage(
+    gameId: string, 
+    playerId: string, 
+    playerName: string, 
+    message: string,
+    messageType?: MessageType, 
+    audioUrl?: string,
+    duration?: number,
+    mimeType?: string
+  ): Promise<ChatMessage>;
+  storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer, mimeType?: string): Promise<string>;
   getChatMessages(gameId: string): Promise<ChatMessage[]>;
   clearChatMessages(gameId: string): Promise<void>;
 }
@@ -66,7 +67,7 @@ export class MemStorage implements IStorage {
   private roomCodes: Map<string, string>; // Maps room codes to game IDs
   private currentId: number;
   private chatMessages: Map<string, ChatMessage[]>;
-  private audioMessages: Map<string, VoiceMessageData>; // Store audio data with format info
+  private audioMessages: Map<string, { buffer: Buffer, mimeType: string, timestamp: number }>; // To store audio message data
 
   constructor() {
     this.users = new Map();
@@ -545,7 +546,8 @@ export class MemStorage implements IStorage {
     message: string,
     messageType: MessageType = "text",
     audioUrl?: string,
-    duration?: number
+    duration?: number,
+    mimeType?: string
   ): Promise<ChatMessage> {
     if (!this.chatMessages.has(gameId)) {
       this.chatMessages.set(gameId, []);
@@ -560,7 +562,8 @@ export class MemStorage implements IStorage {
       timestamp: Date.now(),
       messageType,
       audioUrl,
-      duration
+      duration,
+      mimeType
     };
     
     this.chatMessages.get(gameId)!.push(chatMessage);
@@ -574,25 +577,25 @@ export class MemStorage implements IStorage {
     return chatMessage;
   }
 
-  // Updated voice message methods
-  async storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer, format: string = 'audio/webm'): Promise<string> {
-    const audioId = nanoid();
+  async storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer, mimeType: string = 'audio/webm'): Promise<string> {
+    const audioId = `voice-${gameId}-${playerId}-${Date.now()}`;
+    
+    // Store the audio data with its MIME type
     this.audioMessages.set(audioId, {
       buffer: audioData,
-      format: format,
+      mimeType,
       timestamp: Date.now()
     });
     
-    // Set up auto-cleanup after 24 hours
+    // Set a TTL for audio messages (7 days)
     setTimeout(() => {
-      this.audioMessages.delete(audioId);
-    }, 24 * 60 * 60 * 1000);
+      if (this.audioMessages.has(audioId)) {
+        this.audioMessages.delete(audioId);
+        console.log(`Deleted expired voice message: ${audioId}`);
+      }
+    }, 7 * 24 * 60 * 60 * 1000);
     
     return audioId;
-  }
-  
-  async getVoiceMessage(audioId: string): Promise<VoiceMessageData | undefined> {
-    return this.audioMessages.get(audioId);
   }
 
   async getChatMessages(gameId: string): Promise<ChatMessage[]> {

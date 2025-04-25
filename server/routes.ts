@@ -370,20 +370,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else if (message.type === 'chat_message') {
           if (message.gameId && message.playerId && message.chatMessage?.message) {
             try {
-              // Get player info to attach the right name
+              // Check that the game exists
               const game = await storage.getGame(message.gameId);
-              if (!game) {
-                console.error(`Game ${message.gameId} not found for chat message`);
-                return;
-              }
+              if (!game) return;
               
+              // Find the player
               const player = game.players.find(p => p.id === message.playerId);
-              if (!player) {
-                console.error(`Player ${message.playerId} not found in game ${message.gameId} for chat message`);
-                return;
-              }
+              if (!player) return;
               
-              // Save and broadcast the chat message
+              // Get message properties with defaults
               const messageType = message.chatMessage.messageType || 'text';
               const chatMessage = await storage.saveChatMessage(
                 message.gameId,
@@ -392,13 +387,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 message.chatMessage.message,
                 messageType,
                 message.chatMessage.audioUrl,
-                message.chatMessage.duration
+                message.chatMessage.duration,
+                message.chatMessage.mimeType
               );
               
               await broadcastChatMessage(chatMessage);
             } catch (error) {
-              console.error("Error handling chat message:", error);
+              console.error('Error processing chat message:', error);
             }
+            return;
           }
         } else if (message.type === 'chat_history') {
           if (message.gameId && message.playerId) {
@@ -767,7 +764,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const playerId = req.body.playerId;
       const playerName = req.body.playerName;
       const duration = parseFloat(req.body.duration || '0');
-      const audioFormat = req.body.audioFormat || 'audio/webm'; // Get format from request
+      const mimeType = req.body.mimeType || 'audio/webm'; // Default to webm if not specified
       
       if (!gameId || !playerId || !req.file) {
         return res.status(400).json({ error: 'Missing required parameters' });
@@ -779,8 +776,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Game not found' });
       }
       
-      // Store the audio file with format information
-      const audioId = await storage.storeVoiceMessage(gameId, playerId, req.file.buffer, audioFormat);
+      // Store the audio file with its mime type
+      const audioId = await storage.storeVoiceMessage(gameId, playerId, req.file.buffer, mimeType);
       
       // Create a chat message for this voice message
       const chatMessage = await storage.saveChatMessage(
@@ -790,7 +787,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'Voice message', // Placeholder text for non-supporting clients
         'voice',
         `/api/voice-messages/${audioId}`,
-        duration
+        duration,
+        mimeType
       );
       
       // Broadcast the message to all players
@@ -809,32 +807,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const audioId = req.params.audioId;
       
       // Get the audio data from storage
-      const audioData = await storage.getVoiceMessage(audioId);
+      const audioData = (storage as any).audioMessages.get(audioId);
       
       if (!audioData || !audioData.buffer) {
         return res.status(404).json({ error: 'Voice message not found' });
       }
       
-      // Check if request is coming from iOS
-      const userAgent = req.headers['user-agent'] || '';
-      const isIOS = /iPad|iPhone|iPod/.test(userAgent) || 
-                   (/MacIntel/.test(userAgent) && req.headers['user-mac-touchpoints']);
-      
-      // For iOS clients requesting WebM, set special header to identify format
-      if (isIOS && audioData.format === 'audio/webm') {
-        res.set('X-Audio-Format', 'webm');
-        res.set('X-Audio-Original-Format', audioData.format);
-        res.set('X-Requires-Conversion', 'true');
-        // Send with correct content type for WebM
-        res.set('Content-Type', 'audio/webm');
-      } else {
-        // Set headers for audio content based on stored format
-        res.set('Content-Type', audioData.format || 'audio/webm');
-      }
-      
-      // Allow cross-origin requests for the audio files
-      res.set('Access-Control-Allow-Origin', '*');
-      res.set('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+      // Set headers for audio content with the stored mime type
+      res.set('Content-Type', audioData.mimeType || 'audio/webm');
       res.set('Content-Length', audioData.buffer.length.toString());
       
       // Send the audio data
