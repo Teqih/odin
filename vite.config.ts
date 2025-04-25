@@ -48,14 +48,15 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          if (id.includes('node_modules')) {
-            if (id.includes('react') || 
-                id.includes('react-dom') || 
-                id.includes('@emotion') || 
-                id.includes('scheduler')) {
-              return 'vendor-react';
-            }
+          if (id.includes('node_modules/react') || 
+              id.includes('node_modules/react-dom') || 
+              id.includes('node_modules/scheduler') ||
+              id.includes('node_modules/@emotion') ||
+              id.includes('node_modules/use-sync-external-store')) {
+            return 'vendor-react';
+          }
             
+          if (id.includes('node_modules')) {
             if (id.includes('shadcn') || 
                 id.includes('radix-ui') || 
                 id.includes('lucide-react')) {
@@ -94,6 +95,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
+    include: ['react', 'react-dom', 'react/jsx-runtime'],
     esbuildOptions: {
       define: {
         global: 'globalThis'

@@ -16,16 +16,28 @@ const LoadingFallback = () => (
   </div>
 );
 
+// Create a wrapped route component to handle Suspense
+const LazyRoute = ({ component: Component, ...rest }: any) => {
+  return (
+    <Route
+      {...rest}
+      component={(props: any) => (
+        <Component {...props} />
+      )}
+    />
+  );
+};
+
 function Router() {
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Switch>
-        <Route path="/" component={Home} />
-        <Route path="/create" component={Home} />
-        <Route path="/join" component={Home} />
-        <Route path="/game/:gameId" component={Game} />
-        <Route path="/lobby/:gameId" component={Game} />
-        <Route component={NotFound} />
+        <LazyRoute path="/" component={Home} />
+        <LazyRoute path="/create" component={Home} />
+        <LazyRoute path="/join" component={Home} />
+        <LazyRoute path="/game/:gameId" component={Game} />
+        <LazyRoute path="/lobby/:gameId" component={Game} />
+        <LazyRoute component={NotFound} />
       </Switch>
     </Suspense>
   );

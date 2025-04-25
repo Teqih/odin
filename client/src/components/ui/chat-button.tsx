@@ -3,7 +3,12 @@ import { Button } from "@/components/ui/button";
 import { MessageCircle } from "lucide-react";
 
 // Lazy load the ChatPanel component
-const ChatPanel = lazy(() => import("@/components/ui/chat-panel"));
+// Use a named import in a separate variable to avoid hooks errors
+const ChatPanelLazy = lazy(() => 
+  import("@/components/ui/chat-panel").then(module => ({ 
+    default: module.default 
+  }))
+);
 
 interface ChatButtonProps {
   gameId: string;
@@ -70,7 +75,7 @@ export const ChatButton: React.FC<ChatButtonProps> = ({
             <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
           </div>
         }>
-          <ChatPanel
+          <ChatPanelLazy
             gameId={gameId}
             playerId={playerId}
             playerName={playerName}
