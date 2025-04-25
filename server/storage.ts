@@ -12,6 +12,13 @@ import {
 import { nanoid } from "nanoid";
 import { startNewRound as startNewRoundLogic } from "./game"; // Import game logic
 
+// Voice message data structure
+interface VoiceMessageData {
+  buffer: Buffer;
+  format: string;
+  timestamp: number;
+}
+
 // Define storage interface with additional methods for game management
 export interface IStorage {
   // User methods
@@ -35,7 +42,8 @@ export interface IStorage {
   
   // Chat methods
   saveChatMessage(gameId: string, playerId: string, playerName: string, message: string, messageType?: MessageType, audioUrl?: string, duration?: number): Promise<ChatMessage>;
-  storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer): Promise<string>;
+  storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer, format?: string): Promise<string>;
+  getVoiceMessage(audioId: string): Promise<VoiceMessageData | undefined>;
   getChatMessages(gameId: string): Promise<ChatMessage[]>;
   clearChatMessages(gameId: string): Promise<void>;
 }
@@ -58,7 +66,7 @@ export class MemStorage implements IStorage {
   private roomCodes: Map<string, string>; // Maps room codes to game IDs
   private currentId: number;
   private chatMessages: Map<string, ChatMessage[]>;
-  private audioMessages: Map<string, Buffer>; // To store audio message data
+  private audioMessages: Map<string, VoiceMessageData>; // Store audio data with format info
 
   constructor() {
     this.users = new Map();
@@ -566,19 +574,25 @@ export class MemStorage implements IStorage {
     return chatMessage;
   }
 
-  async storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer): Promise<string> {
-    const audioId = `voice-${gameId}-${playerId}-${Date.now()}`;
-    this.audioMessages.set(audioId, audioData);
+  // Updated voice message methods
+  async storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer, format: string = 'audio/webm'): Promise<string> {
+    const audioId = nanoid();
+    this.audioMessages.set(audioId, {
+      buffer: audioData,
+      format: format,
+      timestamp: Date.now()
+    });
     
-    // Set a TTL for audio messages (7 days)
+    // Set up auto-cleanup after 24 hours
     setTimeout(() => {
-      if (this.audioMessages.has(audioId)) {
-        this.audioMessages.delete(audioId);
-        console.log(`Deleted expired voice message: ${audioId}`);
-      }
-    }, 7 * 24 * 60 * 60 * 1000);
+      this.audioMessages.delete(audioId);
+    }, 24 * 60 * 60 * 1000);
     
     return audioId;
+  }
+  
+  async getVoiceMessage(audioId: string): Promise<VoiceMessageData | undefined> {
+    return this.audioMessages.get(audioId);
   }
 
   async getChatMessages(gameId: string): Promise<ChatMessage[]> {

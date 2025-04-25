@@ -21,6 +21,18 @@ interface ChatPanelProps {
   onUnreadCount?: (count: number) => void;
 }
 
+// Helper to get file extension from MIME type
+const getFileExtension = (mimeType: string) => {
+  const formats: Record<string, string> = {
+    'audio/webm': 'webm',
+    'audio/mp4': 'm4a',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav'
+  };
+  // Default to webm if unknown
+  return formats[mimeType] || 'webm';
+};
+
 const ChatPanel: React.FC<ChatPanelProps> = ({ 
   gameId, 
   playerId, 
@@ -45,6 +57,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     isRecording, 
     duration, 
     audioBlob, 
+    audioFormat,
     error: recorderError,
     startRecording, 
     stopRecording,
@@ -242,24 +255,55 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     try {
       setIsUploading(true);
       
+      // Get the appropriate file extension
+      const extension = getFileExtension(audioFormat);
+      
+      // Validate blob before upload
+      if (audioBlob.size === 0) {
+        throw new Error("Empty recording");
+      }
+      
       // Create form data for upload
       const formData = new FormData();
-      formData.append('audio', audioBlob, 'voice-message.webm');
+      formData.append('audio', audioBlob, `voice-message.${extension}`);
       formData.append('playerId', playerId);
       formData.append('playerName', playerName);
       formData.append('duration', duration.toString());
+      formData.append('audioFormat', audioFormat);
       
-      // Upload the voice message
-      await axios.post(`/api/games/${gameId}/voice-message`, formData, {
+      console.log(`Uploading voice message with format: ${audioFormat}, extension: ${extension}, size: ${audioBlob.size} bytes`);
+      
+      // Upload the voice message with timeout handling
+      const uploadPromise = axios.post(`/api/games/${gameId}/voice-message`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
-        }
+        },
+        timeout: 15000 // 15 second timeout
       });
+      
+      await uploadPromise;
       
       // Clear the recording
       clearRecording();
     } catch (error) {
       console.error("Error uploading voice message:", error);
+      
+      // Try to provide a more helpful error message
+      let errorMessage = "Failed to send voice message";
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNABORTED') {
+          errorMessage = "Upload timed out. Try a shorter message.";
+        } else if (error.response) {
+          errorMessage = `Server error: ${error.response.status}`;
+        } else if (error.request) {
+          errorMessage = "No response from server. Check your connection.";
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      // Display error to user (you could add a toast notification here)
+      console.error(errorMessage);
     } finally {
       setIsUploading(false);
     }

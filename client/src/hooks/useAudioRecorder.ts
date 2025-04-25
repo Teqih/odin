@@ -1,11 +1,51 @@
 import { useState, useRef, useCallback } from 'react';
 
+// Helper to detect iOS
+const isIOS = () => {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+};
+
+// Check if a specific MIME type is supported
+const isMimeTypeSupported = (mimeType: string): boolean => {
+  if (!window.MediaRecorder) {
+    return false;
+  }
+  
+  try {
+    return MediaRecorder.isTypeSupported(mimeType);
+  } catch (e) {
+    return false;
+  }
+};
+
+// Get the best supported MIME type
+const getBestSupportedMimeType = (): string => {
+  // Define preferred MIME types in order of preference
+  const preferredTypes = isIOS() 
+    ? ['audio/mp4', 'audio/aac', 'audio/wav', 'audio/webm'] 
+    : ['audio/webm', 'audio/ogg', 'audio/wav', 'audio/mp4'];
+  
+  // Find the first supported type
+  for (const type of preferredTypes) {
+    if (isMimeTypeSupported(type)) {
+      console.log(`Using supported audio format: ${type}`);
+      return type;
+    }
+  }
+  
+  // Default fallback
+  console.warn('No preferred audio format supported, using default');
+  return ''; // Let the browser choose
+};
+
 interface AudioRecorderState {
   isRecording: boolean;
   isPaused: boolean;
   duration: number;
   audioBlob: Blob | null;
   error: string | null;
+  audioFormat: string;
 }
 
 interface AudioRecorderControls {
@@ -17,12 +57,16 @@ interface AudioRecorderControls {
 }
 
 export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
+  // Determine the best audio format based on browser support
+  const audioFormat = getBestSupportedMimeType();
+  
   const [state, setState] = useState<AudioRecorderState>({
     isRecording: false,
     isPaused: false,
     duration: 0,
     audioBlob: null,
     error: null,
+    audioFormat
   });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -59,8 +103,21 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Create media recorder
-      const mediaRecorder = new MediaRecorder(stream);
+      // Set up MediaRecorder with best format
+      let mediaRecorder;
+      try {
+        // Try with the detected format first
+        if (audioFormat) {
+          mediaRecorder = new MediaRecorder(stream, { mimeType: audioFormat });
+        } else {
+          // Let browser choose format if none supported
+          mediaRecorder = new MediaRecorder(stream);
+        }
+      } catch (e) {
+        console.warn("MediaRecorder initialization failed, using default:", e);
+        mediaRecorder = new MediaRecorder(stream);
+      }
+      
       mediaRecorderRef.current = mediaRecorder;
       
       // Set up data handler
@@ -73,12 +130,16 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
 
       // Handle recording stop
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        // Use the actual format from the recorder if possible
+        const actualFormat = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: actualFormat });
+        
         setState(prev => ({ 
           ...prev, 
           isRecording: false, 
           isPaused: false,
-          audioBlob
+          audioBlob,
+          audioFormat: actualFormat
         }));
       };
 
@@ -101,7 +162,7 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
       }));
       clearRecordingData();
     }
-  }, [clearRecordingData]);
+  }, [clearRecordingData, audioFormat]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && state.isRecording) {
@@ -159,6 +220,7 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
       duration: 0,
       audioBlob: null,
       error: null,
+      audioFormat
     });
   }, [clearRecordingData]);
 

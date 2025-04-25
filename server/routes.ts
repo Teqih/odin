@@ -767,6 +767,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const playerId = req.body.playerId;
       const playerName = req.body.playerName;
       const duration = parseFloat(req.body.duration || '0');
+      const audioFormat = req.body.audioFormat || 'audio/webm'; // Get format from request
       
       if (!gameId || !playerId || !req.file) {
         return res.status(400).json({ error: 'Missing required parameters' });
@@ -778,8 +779,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Game not found' });
       }
       
-      // Store the audio file
-      const audioId = await storage.storeVoiceMessage(gameId, playerId, req.file.buffer);
+      // Store the audio file with format information
+      const audioId = await storage.storeVoiceMessage(gameId, playerId, req.file.buffer, audioFormat);
       
       // Create a chat message for this voice message
       const chatMessage = await storage.saveChatMessage(
@@ -808,18 +809,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const audioId = req.params.audioId;
       
       // Get the audio data from storage
-      const audioData = (storage as any).audioMessages.get(audioId);
+      const audioData = await storage.getVoiceMessage(audioId);
       
-      if (!audioData) {
+      if (!audioData || !audioData.buffer) {
         return res.status(404).json({ error: 'Voice message not found' });
       }
       
-      // Set headers for audio content
-      res.set('Content-Type', 'audio/webm');
-      res.set('Content-Length', audioData.length.toString());
+      // Set headers for audio content based on stored format
+      res.set('Content-Type', audioData.format || 'audio/webm');
+      res.set('Content-Length', audioData.buffer.length.toString());
       
       // Send the audio data
-      return res.send(audioData);
+      return res.send(audioData.buffer);
     } catch (error) {
       console.error('Error retrieving voice message:', error);
       return res.status(500).json({ error: 'Server error' });
