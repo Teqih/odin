@@ -24,36 +24,49 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
 
   // Set up audio element
   useEffect(() => {
-    const audio = new Audio(audioUrl);
-    audioRef.current = audio;
+    const fetchAudio = async () => {
+      try {
+        const response = await fetch(audioUrl);
+        if (!response.ok) {
+          throw new Error('Failed to fetch audio');
+        }
 
-    // Set up event handlers
-    audio.addEventListener('play', () => setIsPlaying(true));
-    audio.addEventListener('pause', () => setIsPlaying(false));
-    audio.addEventListener('ended', () => {
-      setIsPlaying(false);
-      setProgress(0);
-    });
-    audio.addEventListener('error', () => {
-      setError('Error loading audio');
-      setIsPlaying(false);
-    });
+        const contentType = response.headers.get('Content-Type');
+        if (contentType !== 'audio/mpeg') {
+          throw new Error('Unsupported audio format');
+        }
+
+        const audioBlob = await response.blob();
+        const audioObjectUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioObjectUrl);
+        audioRef.current = audio;
+
+        // Set up event handlers
+        audio.addEventListener('play', () => setIsPlaying(true));
+        audio.addEventListener('pause', () => setIsPlaying(false));
+        audio.addEventListener('ended', () => {
+          setIsPlaying(false);
+          setProgress(0);
+        });
+        audio.addEventListener('error', () => {
+          setError('Error loading audio');
+          setIsPlaying(false);
+        });
+      } catch (err) {
+        console.error(err);
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      }
+    };
+
+    fetchAudio();
 
     return () => {
-      // Clean up event listeners
-      audio.pause();
-      audio.removeEventListener('play', () => setIsPlaying(true));
-      audio.removeEventListener('pause', () => setIsPlaying(false));
-      audio.removeEventListener('ended', () => {
-        setIsPlaying(false);
-        setProgress(0);
-      });
-      audio.removeEventListener('error', () => {
-        setError('Error loading audio');
-        setIsPlaying(false);
-      });
-      
-      // Clear update interval
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current = null;
+      }
+
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -145,4 +158,4 @@ export const VoiceMessage: React.FC<VoiceMessageProps> = ({
       )}
     </div>
   );
-}; 
+};
