@@ -24,6 +24,7 @@ export default defineConfig({
         ]
       : []),
   ],
+  base: '/',
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
@@ -39,6 +40,7 @@ export default defineConfig({
     assetsInlineLimit: 4096,
     sourcemap: process.env.NODE_ENV !== "production",
     minify: "terser",
+    assetsDir: 'assets',
     terserOptions: {
       compress: {
         drop_console: process.env.NODE_ENV === "production",
@@ -48,27 +50,35 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          if (id.includes('node_modules/react') || 
-              id.includes('node_modules/react-dom') || 
-              id.includes('node_modules/scheduler') ||
-              id.includes('node_modules/@emotion') ||
-              id.includes('node_modules/use-sync-external-store')) {
+          // React and related packages
+          if (
+            id.includes('node_modules/react') || 
+            id.includes('node_modules/react-dom') || 
+            id.includes('node_modules/scheduler') ||
+            id.includes('node_modules/use-sync-external-store')
+          ) {
             return 'vendor-react';
           }
-            
+          
+          // UI related packages
+          if (
+            id.includes('node_modules/@radix-ui/') || 
+            id.includes('node_modules/lucide-react')
+          ) {
+            return 'vendor-ui';
+          }
+          
+          // State management
+          if (
+            id.includes('node_modules/@tanstack/') || 
+            id.includes('node_modules/wouter') || 
+            id.includes('node_modules/zod')
+          ) {
+            return 'vendor-state';
+          }
+          
+          // Other node_modules
           if (id.includes('node_modules')) {
-            if (id.includes('shadcn') || 
-                id.includes('radix-ui') || 
-                id.includes('lucide-react')) {
-              return 'vendor-ui';
-            }
-            
-            if (id.includes('tanstack') || 
-                id.includes('zod') || 
-                id.includes('wouter')) {
-              return 'vendor-state';
-            }
-            
             return 'vendor-deps';
           }
         },
