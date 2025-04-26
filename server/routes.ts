@@ -716,9 +716,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 "purple",
                 "orange",
               ]),
-              value: z
-                .enum(["1", "2", "3", "4", "5", "6", "7", "8", "9"])
-                .transform((val) => parseInt(val, 10) as CardValue),
+              value: z.union([
+                // Accept strings (for backward compatibility)
+                z.enum(["1", "2", "3", "4", "5", "6", "7", "8", "9"])
+                  .transform((val) => parseInt(val, 10) as CardValue),
+                // Accept numbers directly (matching the schema definition)
+                z.number().int().min(1).max(9) as z.ZodType<CardValue>
+              ]),
             })
           )
           .min(1),
