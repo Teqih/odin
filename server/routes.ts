@@ -922,11 +922,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const outputBuffer: Buffer = await new Promise((resolve, reject) => {
           const chunks: Buffer[] = [];
 
+          // Ensure file exists and log incoming file info for debugging
+          if (!req.file) {
+            return reject(new Error('No file uploaded'));
+          }
+
+          console.log('Incoming audio file:', {
+            mimetype: req.file.mimetype,
+            originalname: req.file.originalname,
+            size: req.file.size
+          });
+
           ffmpeg(inputStream)
-            .inputFormat("webm")
-            .toFormat("mp3")
-            .on("error", (err) => reject(err))
-            .on("end", () => resolve(Buffer.concat(chunks)))
+            // Let FFmpeg auto-detect input format
+            .toFormat('mp3')
+            .on('error', (err) => {
+              console.error('FFmpeg error:', err);
+              reject(err);
+            })
+            .on('end', () => resolve(Buffer.concat(chunks)))
             .pipe(
               new Writable({
                 write(chunk, encoding, callback) {

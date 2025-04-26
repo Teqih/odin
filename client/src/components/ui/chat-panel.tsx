@@ -105,6 +105,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         
         {msg.messageType === "voice" ? (
           <VoiceMessage 
+            id={msg.id}
             audioUrl={msg.audioUrl!}
             duration={msg.duration || 0}
             isCurrentUser={isOwnMessage}
@@ -244,7 +245,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       
       // Create form data for upload
       const formData = new FormData();
-      formData.append('audio', audioBlob, 'voice-message.webm');
+      // Determine file extension based on MIME type
+      const mimeType = audioBlob.type;
+      const ext = mimeType.includes('mp4') ? 'mp4'
+                : mimeType.includes('mpeg') ? 'mp3' : 'webm';
+      formData.append('audio', audioBlob, `voice-message.${ext}`);
+      formData.append('mimeType', mimeType);
       formData.append('playerId', playerId);
       formData.append('playerName', playerName);
       formData.append('duration', duration.toString());
@@ -260,6 +266,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
       clearRecording();
     } catch (error) {
       console.error("Error uploading voice message:", error);
+      clearRecording(); // Clean up client state on failure
     } finally {
       setIsUploading(false);
     }

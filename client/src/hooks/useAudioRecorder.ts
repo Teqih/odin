@@ -17,6 +17,7 @@ interface AudioRecorderControls {
 }
 
 export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
+  const mimeTypeRef = useRef<string>('');
   const [state, setState] = useState<AudioRecorderState>({
     isRecording: false,
     isPaused: false,
@@ -59,8 +60,17 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Create media recorder
-      const mediaRecorder = new MediaRecorder(stream);
+      // Detect supported MIME type
+      const preferredTypes = [
+        'audio/webm;codecs=opus',
+        'audio/mp4',          // Safari iOS
+        'audio/mpeg'
+      ];
+      const mimeType = preferredTypes.find(t => MediaRecorder.isTypeSupported(t)) ?? '';
+      mimeTypeRef.current = mimeType;
+
+      // Create media recorder with supported type
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
       mediaRecorderRef.current = mediaRecorder;
 
       // Set up data handler
@@ -83,7 +93,7 @@ export function useAudioRecorder(): AudioRecorderState & AudioRecorderControls {
           return;
         }
         const audioBlob = new Blob(audioChunksRef.current, {
-          type: "audio/webm",
+          type: mimeTypeRef.current || 'audio/webm',
         });
         setState((prev) => ({
           ...prev,
