@@ -1,9 +1,21 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { handleApiError } from "@/utils/errorHandler";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let errorData;
+    try {
+      // Try to parse the response as JSON first
+      const text = await res.text();
+      errorData = text ? JSON.parse(text) : { message: res.statusText };
+    } catch (e) {
+      // If parsing fails, use the raw text
+      errorData = { message: res.statusText };
+    }
+    
+    // Use our error handler to translate the message
+    const translatedMessage = handleApiError(errorData);
+    throw new Error(`${res.status}: ${translatedMessage}`);
   }
 }
 

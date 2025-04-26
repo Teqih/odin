@@ -133,6 +133,29 @@ const resources = {
       "language": "Language",
       "language.english": "English",
       "language.french": "French",
+      
+      // Server error messages
+      "error.game.notFound": "Game not found",
+      "error.game.alreadyStarted": "Game has already started",
+      "error.game.notInProgress": "Game is not in progress",
+      "error.game.full": "Game is full",
+      "error.game.notEnoughPlayers": "Not enough players to start the game",
+      "error.game.cannotPass": "You cannot pass when no cards have been played",
+      "error.game.invalidAction": "Invalid action",
+      
+      "error.player.notFound": "Player not found",
+      "error.player.nameAlreadyTaken": "This name is already taken",
+      "error.player.notYourTurn": "It's not your turn",
+      
+      "error.card.notInHand": "Card not in your hand",
+      "error.card.notFound": "Card not found",
+      "error.card.mustPlayCards": "You must play at least one card",
+      "error.card.mustPlaySameType": "All cards must be the same value or the same color",
+      "error.card.mustPlayHigherValue": "Your play must have a higher value than the current play",
+      "error.card.mustPlayExactCount": "You must play the exact number of cards required",
+      "error.card.mustPlayFirstCard": "Must play exactly one card on the first turn of the round",
+      
+      "error.server.internal": "Internal server error"
     }
   },
   fr: {
@@ -263,6 +286,29 @@ const resources = {
       "language": "Langue",
       "language.english": "Anglais",
       "language.french": "Français",
+      
+      // Server error messages
+      "error.game.notFound": "Partie introuvable",
+      "error.game.alreadyStarted": "La partie a déjà commencé",
+      "error.game.notInProgress": "La partie n'est pas en cours",
+      "error.game.full": "La partie est complète",
+      "error.game.notEnoughPlayers": "Pas assez de joueurs pour commencer la partie",
+      "error.game.cannotPass": "Vous ne pouvez pas passer quand aucune carte n'a été jouée",
+      "error.game.invalidAction": "Action invalide",
+      
+      "error.player.notFound": "Joueur introuvable",
+      "error.player.nameAlreadyTaken": "Ce nom est déjà pris",
+      "error.player.notYourTurn": "Ce n'est pas votre tour",
+      
+      "error.card.notInHand": "La carte n'est pas dans votre main",
+      "error.card.notFound": "Carte introuvable",
+      "error.card.mustPlayCards": "Vous devez jouer au moins une carte",
+      "error.card.mustPlaySameType": "Toutes les cartes doivent être de la même valeur ou de la même couleur",
+      "error.card.mustPlayHigherValue": "Votre jeu doit avoir une valeur supérieure au jeu actuel",
+      "error.card.mustPlayExactCount": "Vous devez jouer le nombre exact de cartes requis",
+      "error.card.mustPlayFirstCard": "Vous devez jouer exactement une carte au premier tour de la manche",
+      
+      "error.server.internal": "Erreur interne du serveur"
     }
   }
 };

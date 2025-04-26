@@ -1,5 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
+import { GameError } from "./utils/gameError";
+import { ErrorCode } from "./constants/errorCodes";
+import { NextFunction } from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import {
@@ -1109,6 +1112,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           "Content-Type": getMimeType(req.params.file),
         });
         fs.createReadStream(filePath).pipe(res);
+      }
+    });
+  });
+
+  // Global error handling middleware
+  app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+    console.error("Error in request:", err);
+    
+    if (err instanceof GameError) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: err.code,
+          message: err.message
+        }
+      });
+    }
+    
+    // Handle other errors
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: ErrorCode.SERVER_ERROR,
+        message: 'Internal server error'
       }
     });
   });

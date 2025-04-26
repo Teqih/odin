@@ -11,6 +11,8 @@ import {
 } from "@shared/schema";
 import { nanoid } from "nanoid";
 import { startNewRound as startNewRoundLogic } from "./game"; // Import game logic
+import { GameError } from "./utils/gameError";
+import { ErrorCode } from "./constants/errorCodes";
 
 // Define storage interface with additional methods for game management
 export interface IStorage {
@@ -147,8 +149,8 @@ export class MemStorage implements IStorage {
 
   async addPlayerToGame(gameId: string, playerName: string): Promise<GameState> {
     const game = await this.getGame(gameId);
-    if (!game) throw new Error("Game not found");
-    if (game.status !== "waiting") throw new Error("Game has already started");
+    if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
+    if (game.status !== "waiting") throw new GameError(ErrorCode.GAME_ALREADY_STARTED);
     // Suppression de la limite de 6 joueurs
     // Calcul de la valeur maximale basée sur le jeu de cartes - un joueur minimum doit avoir 2 cartes
     const colors: CardColor[] = ["red", "blue", "green", "yellow", "purple", "orange"];
@@ -156,8 +158,8 @@ export class MemStorage implements IStorage {
     const totalCardsInDeck = colors.length * values.length; // 54 cartes
     const maxPlayersLimit = Math.floor(totalCardsInDeck / 2); // Chaque joueur doit avoir au moins 2 cartes
     
-    if (game.players.length >= maxPlayersLimit) throw new Error("Game is full");
-    if (game.players.some(p => p.name === playerName)) throw new Error("Name already taken");
+    if (game.players.length >= maxPlayersLimit) throw new GameError(ErrorCode.GAME_FULL);
+    if (game.players.some(p => p.name === playerName)) throw new GameError(ErrorCode.NAME_ALREADY_TAKEN);
 
     const newPlayer: Player = {
       id: nanoid(),
@@ -174,9 +176,9 @@ export class MemStorage implements IStorage {
 
   async startGame(gameId: string): Promise<GameState> {
     const game = await this.getGame(gameId);
-    if (!game) throw new Error("Game not found");
-    if (game.players.length < 2) throw new Error("Not enough players");
-    if (game.status !== "waiting") throw new Error("Game has already started");
+    if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
+    if (game.players.length < 2) throw new GameError(ErrorCode.NOT_ENOUGH_PLAYERS);
+    if (game.status !== "waiting") throw new GameError(ErrorCode.GAME_ALREADY_STARTED);
 
     // Use the central startNewRound logic to set up the first round
     const startedGame = startNewRoundLogic(game);
@@ -194,8 +196,8 @@ export class MemStorage implements IStorage {
 
   async startNewRound(gameId: string): Promise<GameState> {
     const game = await this.getGame(gameId);
-    if (!game) throw new Error("Game not found");
-    if (game.status !== "playing") throw new Error("Game is not in progress");
+    if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
+    if (game.status !== "playing") throw new GameError(ErrorCode.GAME_NOT_IN_PROGRESS);
     
     // Use the imported game logic function
     const updatedGame = startNewRoundLogic(game);
@@ -206,25 +208,25 @@ export class MemStorage implements IStorage {
 
   async playCards(gameId: string, playerId: string, cards: Card[]): Promise<GameState> {
     const game = await this.getGame(gameId);
-    if (!game) throw new Error("Game not found");
-    if (game.status !== "playing") throw new Error("Game is not in progress");
+    if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
+    if (game.status !== "playing") throw new GameError(ErrorCode.GAME_NOT_IN_PROGRESS);
     
     const playerIndex = game.players.findIndex(p => p.id === playerId);
-    if (playerIndex === -1) throw new Error("Player not found");
+    if (playerIndex === -1) throw new GameError(ErrorCode.PLAYER_NOT_FOUND);
     
-    if (playerIndex !== game.currentTurn) throw new Error("Not your turn");
+    if (playerIndex !== game.currentTurn) throw new GameError(ErrorCode.NOT_YOUR_TURN);
     
     const player = game.players[playerIndex];
     
     // Check if cards array is empty
     if (!cards || cards.length === 0) {
-        throw new Error("You must play at least one card.");
+        throw new GameError(ErrorCode.MUST_PLAY_CARDS);
     }
     
     // Check if all cards to be played are in player's hand
     for (const card of cards) {
       if (!player.hand.some(c => c.id === card.id)) {
-        throw new Error("Card not in player's hand");
+        throw new GameError(ErrorCode.CARD_NOT_IN_HAND);
       }
     }
     
@@ -236,21 +238,21 @@ export class MemStorage implements IStorage {
     const allSameColor = cards.every(c => c.color === playedColor);
 
     if (!allSameValue && !allSameColor) {
-      throw new Error("All cards played must be the same value or the same color");
+      throw new GameError(ErrorCode.MUST_PLAY_SAME_TYPE);
     }
     
     // === START VALIDATION ===
 
     // Rule: First play of the round must be exactly one card
     if (game.currentPlay.length === 0 && cards.length !== 1) {
-      throw new Error("Must play exactly one card on the first turn of the round.");
+      throw new GameError(ErrorCode.MUST_PLAY_FIRST_CARD);
     }
 
     // Validate subsequent plays against the current play
     if (game.currentPlay.length > 0) {
       // Rule: Must play the exact same number OR one more card than the current play
       if (cards.length !== game.currentPlay.length && cards.length !== game.currentPlay.length + 1) {
-        throw new Error(`Must play ${game.currentPlay.length} or ${game.currentPlay.length + 1} card(s)`);
+        throw new GameError(ErrorCode.MUST_PLAY_EXACT_COUNT, `Must play ${game.currentPlay.length} or ${game.currentPlay.length + 1} card(s)`);
       }
       
       const currentPlayCards = game.currentPlay;
@@ -293,12 +295,12 @@ export class MemStorage implements IStorage {
       // La règle principale: 
       // Si mes cartes correspondent par couleur ou valeur, ou si la valeur combinée est supérieure
       if (!matchesValue && !matchesColor && playedCombinedValue <= currentPlayValue) {
-        throw new Error(`Your play value (${playedCombinedValue}) must be higher than the current play value (${currentPlayValue}) or match color/value`);
+        throw new GameError(ErrorCode.MUST_PLAY_HIGHER_VALUE, `Your play value (${playedCombinedValue}) must be higher than the current play value (${currentPlayValue}) or match color/value`);
       }
 
       // Si les cartes correspondent par couleur ou valeur, elles doivent avoir une valeur strictement supérieure
       if ((matchesValue || matchesColor) && playedCombinedValue <= currentPlayValue) {
-        throw new Error(`Even when matching color/value, your play value (${playedCombinedValue}) must be higher than the current play value (${currentPlayValue})`);
+        throw new GameError(ErrorCode.MUST_PLAY_HIGHER_VALUE, `Even when matching color/value, your play value (${playedCombinedValue}) must be higher than the current play value (${currentPlayValue})`);
       }
     } 
     // === END VALIDATION ===
@@ -384,18 +386,18 @@ export class MemStorage implements IStorage {
 
   async pickCard(gameId: string, playerId: string, cardId: string): Promise<GameState> {
     const game = await this.getGame(gameId);
-    if (!game) throw new Error("Game not found");
+    if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
     
     const playerIndex = game.players.findIndex(p => p.id === playerId);
-    if (playerIndex === -1) throw new Error("Player not found");
+    if (playerIndex === -1) throw new GameError(ErrorCode.PLAYER_NOT_FOUND);
     
     if (game.lastAction.type !== "play" || game.lastAction.playerId !== playerId) {
-      throw new Error("You can only pick a card after playing");
+      throw new GameError(ErrorCode.INVALID_ACTION, "You can only pick a card after playing");
     }
     
     // Find the card in the previous play
     const cardIndex = game.previousPlay.findIndex(c => c.id === cardId);
-    if (cardIndex === -1) throw new Error("Card not found in previous play");
+    if (cardIndex === -1) throw new GameError(ErrorCode.CARD_NOT_FOUND, "Card not found in previous play");
     
     const card = game.previousPlay[cardIndex];
     const player = game.players[playerIndex];
