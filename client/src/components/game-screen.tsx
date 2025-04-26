@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -70,6 +71,7 @@ interface GameScreenProps {
 const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const dropZoneRef = useRef<HTMLDivElement>(null);
   
   // Get stored player info - ensure this is persisted properly
@@ -207,8 +209,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     },
     onError: (error) => {
       toast({
-        title: "Failed to pick card",
-        description: error instanceof Error ? error.message : "Please try again",
+        title: t("game.error.failedPickCard"),
+        description: error instanceof Error ? error.message : t("game.error.tryAgain"),
         variant: "destructive"
       });
     }
@@ -227,8 +229,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       setOptimisticGameState(null);
       
       toast({
-        title: "Failed to pass",
-        description: error instanceof Error ? error.message : "Please try again",
+        title: t("game.error.failedPass"),
+        description: error instanceof Error ? error.message : t("game.error.tryAgain"),
         variant: "destructive"
       });
     }
@@ -248,8 +250,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     },
     onError: (error) => {
       toast({
-        title: "Failed to start new round",
-        description: error instanceof Error ? error.message : "Please try again",
+        title: t("game.error.failedStartRound"),
+        description: error instanceof Error ? error.message : t("game.error.tryAgain"),
         variant: "destructive"
       });
     }
@@ -278,8 +280,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       setConnectionStatus("disconnected");
       setShowDisconnectedAlert(true);
       toast({
-        title: "Connection Error",
-        description: "Failed to connect to game server. Please try refreshing the page.",
+        title: t("game.error.connectionError"),
+        description: t("game.error.connectionFailed"),
         variant: "destructive"
       });
     }
@@ -293,8 +295,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         setShowDisconnectedAlert(false);
       } else if (message.type === "error") {
         toast({
-          title: "Connection Error",
-          description: message.error || "An error occurred with the game connection",
+          title: t("game.error.connectionError"),
+          description: message.error || t("game.error.connectionFailed"),
           variant: "destructive"
         });
         
@@ -345,8 +347,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       const currentPlayer = gameStateData.players.find((p: Player) => p.id === playerId);
       if (!currentPlayer) {
         toast({
-          title: "Error",
-          description: "You are not a player in this game",
+          title: t("game.errorGeneric"),
+          description: t("game.error.notPlayer"),
           variant: "destructive"
         });
         navigate("/");
@@ -362,7 +364,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         if (winnerPlayer) {
           setRoundWinnerName(winnerPlayer.name);
           const scores = gameStateData.players.map((p: Player) => ({
-            name: p.name + (p.id === playerId ? " (You)" : ""),
+            name: p.name + (p.id === playerId ? ` (${t("game.playerYou")})` : ""),
             score: p.score,
             cards: p.hand.length
           }));
@@ -378,7 +380,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
           const scores = [...gameStateData.players]
             .sort((a: Player, b: Player) => a.score - b.score)
             .map((p: Player) => ({
-              name: p.name + (p.id === playerId ? " (You)" : ""),
+              name: p.name + (p.id === playerId ? ` (${t("game.playerYou")})` : ""),
               score: p.score
             }));
           setFinalScores(scores);
@@ -498,8 +500,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
           return newSelection;
         } else {
           toast({
-            title: "Invalid selection",
-            description: "All cards must be the same color or same value",
+            title: t("game.error.invalidSelection"),
+            description: t("game.error.sameColorOrValue"),
             variant: "destructive"
           });
           return prevSelected; // Return unchanged state on validation failure
@@ -511,8 +513,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   const handlePlayCards = () => {
     if (selectedCards.length === 0) {
       toast({
-        title: "No cards selected",
-        description: "Select one or more cards to play",
+        title: t("game.error.noCardsSelected"),
+        description: t("game.error.selectCards"),
         variant: "destructive"
       });
       return;
@@ -526,8 +528,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     
     if (!allCardsInHand) {
       toast({
-        title: "Invalid selection",
-        description: "Some selected cards are not in your hand",
+        title: t("game.error.invalidSelection"),
+        description: t("game.error.notInHand"),
         variant: "destructive"
       });
       setSelectedCards([]); // Reset selection to fix the desync
@@ -581,7 +583,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   };
   
   const handleLeaveGame = () => {
-    if (confirm("Are you sure you want to leave the game?")) {
+    if (confirm(t("game.leaveConfirm"))) {
       sessionStorage.removeItem("gameId");
       sessionStorage.removeItem("playerId");
       sessionStorage.removeItem("playerName");
@@ -601,8 +603,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
   
   const showRules = () => {
     toast({
-      title: "Game Rules",
-      description: "Play cards of same color or value. You can play the same number OR one more card than previous play. Higher value beats previous play. Empty your hand to win!",
+      title: t("game.rules.title"),
+      description: t("game.rules.description"),
       duration: 7000
     });
   };
@@ -612,8 +614,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
     // Attempt to force reconnect
     forceReconnect();
     toast({
-      title: "Reconnecting...",
-      description: "Attempting to reconnect to the game server.",
+      title: t("game.reconnectingMessage"),
+      description: t("game.reconnectingDescription"),
     });
   };
   
@@ -624,8 +626,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       if (errorMessage.includes("403") || errorMessage.includes("404")) {
         console.error("Game or Player not found (403/404). Clearing session and redirecting.");
         toast({
-          title: "Game session ended",
-          description: "The game was not found or your session expired. Redirecting to home.",
+          title: t("game.sessionEnded"),
+          description: t("game.sessionExpired"),
           variant: "destructive"
         });
         // Clear stale session data
@@ -645,7 +647,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       <div className="h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p>Loading game...</p>
+          <p>{t("game.loadingGame")}</p>
         </div>
       </div>
     );
@@ -658,12 +660,12 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         <Card className="p-6 max-w-md">
           <div className="text-center">
             <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
-            <h2 className="text-xl font-semibold mb-2">Error Loading Game</h2>
+            <h2 className="text-xl font-semibold mb-2">{t("game.errorLoadingGame")}</h2>
             <p className="text-muted-foreground mb-4">
-              {error instanceof Error ? error.message : "Unable to join the game. The game may no longer exist."}
+              {error instanceof Error ? error.message : t("game.errorDefault")}
             </p>
             <Button onClick={() => navigate("/")}>
-              Back to Home
+              {t("game.backToHome")}
             </Button>
           </div>
         </Card>
@@ -683,9 +685,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         <Card className="p-6 max-w-md">
           <div className="text-center">
             <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
-               <h2 className="text-xl font-semibold mb-2">Error</h2>
-               <p className="text-muted-foreground mb-4">Could not find your player data in the game.</p>
-               <Button onClick={() => navigate("/")}>Back to Home</Button>
+               <h2 className="text-xl font-semibold mb-2">{t("game.errorGeneric")}</h2>
+               <p className="text-muted-foreground mb-4">{t("game.errorPlayerNotFound")}</p>
+               <Button onClick={() => navigate("/")}>{t("game.backToHome")}</Button>
           </div>
         </Card>
       </div>
@@ -710,7 +712,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       {/* Game Header */}
       <header className="bg-card shadow-md p-3 flex flex-wrap justify-between items-center">
         <div className="flex items-center">
-          <h1 className="text-xl font-semibold text-primary">Odin Game</h1>
+          <h1 className="text-xl font-semibold text-primary">{t("game.title")}</h1>
           <RoomCodeDisplay roomCode={safeGameState.roomCode} className="ml-4" />
         </div>
         
@@ -724,10 +726,10 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
               "bg-red-500"
             }`} />
             <span className="text-xs text-muted-foreground">
-              {connectionStatus === "connected" ? "Connected" :
-               connectionStatus === "connecting" ? "Connecting..." :
-               connectionStatus === "reconnecting" ? "Reconnecting..." :
-               "Disconnected"}
+              {connectionStatus === "connected" ? t("game.connectionStatus.connected") :
+               connectionStatus === "connecting" ? t("game.connectionStatus.connecting") :
+               connectionStatus === "reconnecting" ? t("game.connectionStatus.reconnecting") :
+               t("game.connectionStatus.disconnected")}
             </span>
           </div>
           
@@ -735,8 +737,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
             variant="ghost" 
             size="sm" 
             onClick={toggleSound} 
-            aria-label={soundEnabled ? "Disable sounds" : "Enable sounds"}
-            title={soundEnabled ? "Disable sounds" : "Enable sounds"}
+            aria-label={soundEnabled ? t("game.soundToggle.disable") : t("game.soundToggle.enable")}
+            title={soundEnabled ? t("game.soundToggle.disable") : t("game.soundToggle.enable")}
           >
             {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
           </Button>
@@ -744,8 +746,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
             variant="ghost"
             size="sm"
             onClick={showRules}
-            aria-label="Game Rules"
-            title="Game Rules"
+            aria-label={t("game.rules.title")}
+            title={t("game.rules.title")}
           >
             <HelpCircle size={18} />
           </Button>
@@ -764,14 +766,14 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       {showDisconnectedAlert && (
         <div className="bg-destructive/20 text-destructive p-2 text-center flex items-center justify-center">
           <AlertCircle className="h-4 w-4 mr-2" />
-          <span>Connection lost. Game updates may be delayed.</span>
+          <span>{t("game.connectionLost")}</span>
           <Button 
             variant="outline" 
             size="sm" 
             className="ml-2 h-7"
             onClick={handleReconnect}
           >
-            Reconnect
+            {t("game.reconnect")}
           </Button>
         </div>
       )}
@@ -807,7 +809,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
                 ))}
                 {opponent.hand.length > 5 && (
                   <div className="text-xs text-muted-foreground">
-                    +{opponent.hand.length - 5} more
+                    {t("game.moreCards", { count: opponent.hand.length - 5 })}
                   </div>
                 )}
               </div>
@@ -819,7 +821,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
         <div className="play-area-container flex-grow flex flex-col items-center justify-center mx-auto w-full max-w-3xl px-4">
           {/* Previous Play */}
           <div className="previous-play mb-4">
-            <p className="text-sm text-muted-foreground text-center mb-2">Previous Play</p>
+            <p className="text-sm text-muted-foreground text-center mb-2">{t("game.previousPlay")}</p>
             <div className="flex justify-center gap-2">
               {safeGameState.previousPlay.length > 0 ? (
                 safeGameState.previousPlay.map(card => (
@@ -831,7 +833,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
                   />
                 ))
               ) : (
-                <div className="text-sm text-muted-foreground">No previous play</div>
+                <div className="text-sm text-muted-foreground">{t("game.noPreviousPlay")}</div>
               )}
             </div>
           </div>
@@ -874,8 +876,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
                   </svg>
                   <p>
                     {isMyTurn 
-                      ? "Drag and drop cards here to play" 
-                      : "Waiting for other player to play"}
+                      ? t("game.dragCards") 
+                      : t("game.waitingForPlay")}
                   </p>
                 </div>
               )}
@@ -887,15 +889,15 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
             <div className={`game-status text-center md:text-left mb-3 md:mb-0 p-2 rounded-md ${isMyTurn ? 'your-turn-highlight' : ''}`}>
               <p className="text-lg font-medium">
                 {isMyTurn 
-                  ? "Your turn" 
-                  : `${currentTurnPlayer?.name}'s turn`}
+                  ? t("game.yourTurn") 
+                  : t("game.playerTurn", { playerName: currentTurnPlayer?.name })}
               </p>
               <p className="text-sm text-muted-foreground">
                 {isMyTurn 
                   ? safeGameState.currentPlay.length > 0 
-                    ? `Play ${safeGameState.currentPlay.length} or ${safeGameState.currentPlay.length + 1} cards of higher value` 
-                    : "Play any cards of same color or value" 
-                  : "Waiting for other player to take their turn"}
+                    ? t("game.playHigherValue", { current: safeGameState.currentPlay.length, next: safeGameState.currentPlay.length + 1 }) 
+                    : t("game.playAnyCards") 
+                  : t("game.waitingForTurn")}
               </p>
             </div>
             
@@ -912,7 +914,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
                   </div>
                 )}
                 <SkipForward className="mr-1 h-4 w-4" />
-                Pass
+                {t("game.pass")}
               </Button>
               
               <Button
@@ -924,7 +926,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
                 onClick={handlePlayCards}
               >
                 <Send className="mr-1 h-4 w-4" />
-                Play Cards
+                {t("game.playCards")}
               </Button>
             </div>
           </div>
@@ -940,11 +942,11 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
                 isCurrentTurn={isMyTurn}
                 size="sm"
               />
-              <p className="ml-2 font-medium">Your Hand</p>
+              <p className="ml-2 font-medium">{t("game.yourHand")}</p>
             </div>
             <div className="flex items-center">
               <span className="mr-1">⭐</span>
-              <span className="text-sm">{currentPlayer.score} points</span>
+              <span className="text-sm">{currentPlayer.score} {t("game.points")}</span>
             </div>
           </div>
           
@@ -963,7 +965,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
               
               {myHand.length === 0 && (
                 <div className="text-muted-foreground">
-                  No cards in hand
+                  {t("game.noCards")}
                 </div>
               )}
             </div>
