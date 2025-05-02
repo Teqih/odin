@@ -781,7 +781,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ gameId }) => {
       {/* Game Play Area */}
       <main className="flex-grow flex flex-col justify-between overflow-hidden">
         {/* Opponent Area */}
-        <div className="opponents-area p-3 flex flex-wrap justify-center md:justify-around gap-4 overflow-y-auto">
+        <div className="opponents-area p-3 flex flex-wrap justify-center md:justify-around gap-4 overflow-y-auto max-h-48">
           {opponents.map((opponent, index) => (
             <div 
               key={opponent.id} 

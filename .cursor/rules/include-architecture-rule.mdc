@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Before any analyze or code, read the ARCHITECTURE.md, it's a file that describe the architecture of this project; if it is not correct, update it.
