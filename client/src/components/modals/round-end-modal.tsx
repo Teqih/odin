@@ -268,7 +268,7 @@ const RoundEndModal: React.FC<RoundEndModalProps> = ({
             <Award className="mr-2 h-5 w-5" />
             {t('game.roundScores')}:
           </h4>
-          <ul className="space-y-3">
+          <ul className="space-y-3 max-h-60 overflow-y-auto pr-2">
             {sortedScores.map((score, index) => (
               <motion.li 
                 key={index} 
