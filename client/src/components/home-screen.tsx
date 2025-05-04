@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import LanguageSelector from "@/components/ui/language-selector";
+import { ActiveGameBanner } from "@/components/active-game-banner";
 
 const HomeScreen: React.FC = () => {
   const [, navigate] = useLocation();
@@ -23,6 +24,7 @@ const HomeScreen: React.FC = () => {
       </div>
       
       <div className="text-center mb-8">
+        <ActiveGameBanner />
         <h1 className="text-4xl md:text-6xl font-bold text-primary mb-4">{t('app.title')}</h1>
         <p className="text-lg text-muted-foreground max-w-md mx-auto">
           {t('app.description')}

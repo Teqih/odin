@@ -1,7 +1,7 @@
-import i18n from 'i18next';
-import { initReactI18next } from 'react-i18next';
-import LanguageDetector from 'i18next-browser-languagedetector';
-import Backend from 'i18next-http-backend';
+import i18n from "i18next";
+import { initReactI18next } from "react-i18next";
+import LanguageDetector from "i18next-browser-languagedetector";
+import Backend from "i18next-http-backend";
 
 // Translation resources
 const resources = {
@@ -9,18 +9,22 @@ const resources = {
     translation: {
       // Home screen
       "app.title": "Odin Card Game",
-      "app.description": "A turn-based multiplayer card game where strategy meets luck.",
+      "app.description":
+        "A turn-based multiplayer card game where strategy meets luck.",
       "button.createGame": "Create Game",
       "button.joinGame": "Join Game",
       "howToPlay.title": "How to Play",
-      "howToPlay.rule1": "Players are dealt cards from a 54-card deck (6 colors, numbered 1-9). Up to 6 players get 9 cards each, larger games get fewer cards.",
-      "howToPlay.rule2": "On your turn, play one or more cards of the same number or color.",
-      "howToPlay.rule3": "Other players must match with higher value cards or pass.",
+      "howToPlay.rule1":
+        "Players are dealt cards from a 54-card deck (6 colors, numbered 1-9). Up to 6 players get 9 cards each, larger games get fewer cards.",
+      "howToPlay.rule2":
+        "On your turn, play one or more cards of the same number or color.",
+      "howToPlay.rule3":
+        "Other players must match with higher value cards or pass.",
       "howToPlay.rule4": "After a play, pick up one card from previous play.",
       "howToPlay.rule5": "First to empty their hand wins the round.",
       "howToPlay.rule6": "Score 1 point per card left in hand.",
       "howToPlay.rule7": "Game ends when a player reaches the point limit.",
-      
+
       // Join/Create screens
       "create.title": "Create Game",
       "create.nameLabel": "Your Name",
@@ -48,7 +52,7 @@ const resources = {
       "join.codeRequired": "Please enter a room code",
       "join.gameFull": "Game is full (maximum 27 players)",
       "join.invalidCode": "Invalid room code or game not found",
-      
+
       // Game screens
       "game.players": "Players",
       "game.yourTurn": "Your Turn",
@@ -67,7 +71,8 @@ const resources = {
       "game.leaveGame": "Leave Game",
       "game.loading": "Loading lobby...",
       "game.errorTitle": "Error Loading Lobby",
-      "game.errorMessage": "Unable to join the game lobby. The game may no longer exist.",
+      "game.errorMessage":
+        "Unable to join the game lobby. The game may no longer exist.",
       "game.backToHome": "Back to Home",
       "game.notEnoughPlayers": "Not enough players",
       "game.needTwoPlayers": "You need at least 2 players to start the game",
@@ -82,32 +87,37 @@ const resources = {
       "game.winner": "Winner!",
       "game.cards": "cards",
       "game.points": "points",
-      
+
       // Game screen additional texts
       "game.title": "Odin Game",
       "game.loadingGame": "Loading game...",
       "game.errorLoadingGame": "Error Loading Game",
-      "game.errorDefault": "Unable to join the game. The game may no longer exist.",
+      "game.errorDefault":
+        "Unable to join the game. The game may no longer exist.",
       "game.errorGeneric": "Error",
-      "game.errorPlayerNotFound": "Could not find your player data in the game.",
+      "game.errorPlayerNotFound":
+        "Could not find your player data in the game.",
       "game.connectionStatus.connected": "Connected",
       "game.connectionStatus.connecting": "Connecting...",
       "game.connectionStatus.reconnecting": "Reconnecting...",
       "game.connectionStatus.disconnected": "Disconnected",
       "game.reconnectingMessage": "Reconnecting...",
-      "game.reconnectingDescription": "Attempting to reconnect to the game server.",
+      "game.reconnectingDescription":
+        "Attempting to reconnect to the game server.",
       "game.connectionLost": "Connection lost. Game updates may be delayed.",
       "game.reconnect": "Reconnect",
       "game.soundToggle.enable": "Enable sounds",
       "game.soundToggle.disable": "Disable sounds",
       "game.rules.title": "Game Rules",
-      "game.rules.description": "Play cards of same color or value. You can play the same number OR one more card than previous play. Higher value beats previous play. Empty your hand to win!",
+      "game.rules.description":
+        "Play cards of same color or value. You can play the same number OR one more card than previous play. Higher value beats previous play. Empty your hand to win!",
       "game.previousPlay": "Previous Play",
       "game.noPreviousPlay": "No previous play",
       "game.dragCards": "Drag and drop cards here to play",
       "game.waitingForPlay": "Waiting for other player to play",
       "game.playerTurn": "{{playerName}}'s turn",
-      "game.playHigherValue": "Play {{current}} or {{next}} cards of higher value",
+      "game.playHigherValue":
+        "Play {{current}} or {{next}} cards of higher value",
       "game.playAnyCards": "Play any cards of same color or value",
       "game.waitingForTurn": "Waiting for other player to take their turn",
       "game.yourHand": "Your Hand",
@@ -118,22 +128,25 @@ const resources = {
       "game.error.failedStartRound": "Failed to start new round",
       "game.error.tryAgain": "Please try again",
       "game.error.connectionError": "Connection Error",
-      "game.error.connectionFailed": "Failed to connect to game server. Please try refreshing the page.",
+      "game.error.connectionFailed":
+        "Failed to connect to game server. Please try refreshing the page.",
       "game.error.notPlayer": "You are not a player in this game",
       "game.error.invalidSelection": "Invalid selection",
-      "game.error.sameColorOrValue": "All cards must be the same color or same value",
+      "game.error.sameColorOrValue":
+        "All cards must be the same color or same value",
       "game.error.notInHand": "Some selected cards are not in your hand",
       "game.error.noCardsSelected": "No cards selected",
       "game.error.selectCards": "Select one or more cards to play",
       "game.leaveConfirm": "Are you sure you want to leave the game?",
       "game.sessionEnded": "Game session ended",
-      "game.sessionExpired": "The game was not found or your session expired. Redirecting to home.",
-      
+      "game.sessionExpired":
+        "The game was not found or your session expired. Redirecting to home.",
+
       // Language
-      "language": "Language",
+      language: "Language",
       "language.english": "English",
       "language.french": "French",
-      
+
       // Server error messages
       "error.game.notFound": "Game not found",
       "error.game.alreadyStarted": "Game has already started",
@@ -142,38 +155,54 @@ const resources = {
       "error.game.notEnoughPlayers": "Not enough players to start the game",
       "error.game.cannotPass": "You cannot pass when no cards have been played",
       "error.game.invalidAction": "Invalid action",
-      
+
       "error.player.notFound": "Player not found",
       "error.player.nameAlreadyTaken": "This name is already taken",
       "error.player.notYourTurn": "It's not your turn",
-      
+
       "error.card.notInHand": "Card not in your hand",
       "error.card.notFound": "Card not found",
       "error.card.mustPlayCards": "You must play at least one card",
-      "error.card.mustPlaySameType": "All cards must be the same value or the same color",
-      "error.card.mustPlayHigherValue": "Your play must have a higher value than the current play",
-      "error.card.mustPlayExactCount": "You must play the exact number of cards required",
-      "error.card.mustPlayFirstCard": "Must play exactly one card on the first turn of the round",
-      
-      "error.server.internal": "Internal server error"
-    }
+      "error.card.mustPlaySameType":
+        "All cards must be the same value or the same color",
+      "error.card.mustPlayHigherValue":
+        "Your play must have a higher value than the current play",
+      "error.card.mustPlayExactCount":
+        "You must play the exact number of cards required",
+      "error.card.mustPlayFirstCard":
+        "Must play exactly one card on the first turn of the round",
+
+      "error.server.internal": "Internal server error",
+
+      // Active game banner
+      home: {
+        activeGame: "Active Game",
+        resumeGame: "Resume Game",
+        roomCode: "Room Code",
+      },
+    },
   },
   fr: {
     translation: {
       // Écran d'accueil
       "app.title": "Jeu de Cartes Odin",
-      "app.description": "Un jeu de cartes multijoueur au tour par tour où stratégie et chance se rencontrent.",
+      "app.description":
+        "Un jeu de cartes multijoueur au tour par tour où stratégie et chance se rencontrent.",
       "button.createGame": "Créer une Partie",
       "button.joinGame": "Rejoindre une Partie",
       "howToPlay.title": "Comment Jouer",
-      "howToPlay.rule1": "Les joueurs reçoivent des cartes d'un jeu de 54 cartes (6 couleurs, numérotées de 1 à 9). Jusqu'à 6 joueurs reçoivent 9 cartes chacun, les parties plus grandes reçoivent moins de cartes.",
-      "howToPlay.rule2": "À votre tour, jouez une ou plusieurs cartes du même numéro ou de la même couleur.",
-      "howToPlay.rule3": "Les autres joueurs doivent suivre avec des cartes de valeur supérieure ou passer leur tour.",
+      "howToPlay.rule1":
+        "Les joueurs reçoivent des cartes d'un jeu de 54 cartes (6 couleurs, numérotées de 1 à 9). Jusqu'à 6 joueurs reçoivent 9 cartes chacun, les parties plus grandes reçoivent moins de cartes.",
+      "howToPlay.rule2":
+        "À votre tour, jouez une ou plusieurs cartes du même numéro ou de la même couleur.",
+      "howToPlay.rule3":
+        "Les autres joueurs doivent suivre avec des cartes de valeur supérieure ou passer leur tour.",
       "howToPlay.rule4": "Après avoir joué, prenez une carte du jeu précédent.",
       "howToPlay.rule5": "Le premier à vider sa main gagne la manche.",
       "howToPlay.rule6": "Marquez 1 point par carte restante en main.",
-      "howToPlay.rule7": "La partie se termine lorsqu'un joueur atteint la limite de points.",
-      
+      "howToPlay.rule7":
+        "La partie se termine lorsqu'un joueur atteint la limite de points.",
+
       // Écrans Rejoindre/Créer
       "create.title": "Créer une Partie",
       "create.nameLabel": "Votre Nom",
@@ -201,7 +230,7 @@ const resources = {
       "join.codeRequired": "Veuillez entrer un code de salle",
       "join.gameFull": "La partie est complète (maximum 27 joueurs)",
       "join.invalidCode": "Code de salle invalide ou partie introuvable",
-      
+
       // Écrans de jeu
       "game.players": "Joueurs",
       "game.yourTurn": "Votre Tour",
@@ -220,10 +249,12 @@ const resources = {
       "game.leaveGame": "Quitter la Partie",
       "game.loading": "Chargement du salon...",
       "game.errorTitle": "Erreur de Chargement du Salon",
-      "game.errorMessage": "Impossible de rejoindre le salon de jeu. La partie n'existe peut-être plus.",
+      "game.errorMessage":
+        "Impossible de rejoindre le salon de jeu. La partie n'existe peut-être plus.",
       "game.backToHome": "Retour à l'Accueil",
       "game.notEnoughPlayers": "Pas assez de joueurs",
-      "game.needTwoPlayers": "Vous avez besoin d'au moins 2 joueurs pour commencer la partie",
+      "game.needTwoPlayers":
+        "Vous avez besoin d'au moins 2 joueurs pour commencer la partie",
       "game.playerYou": "Vous",
       "game.playerHost": "Hôte",
       "game.roundComplete": "Manche Terminée !",
@@ -231,37 +262,45 @@ const resources = {
       "game.roundScores": "Scores de la Manche",
       "game.startNextRound": "Commencer la Prochaine Manche",
       "game.starting": "Démarrage...",
-      "game.waitingForHost": "En attente de l'hôte pour commencer la prochaine manche...",
+      "game.waitingForHost":
+        "En attente de l'hôte pour commencer la prochaine manche...",
       "game.winner": "Gagnant !",
       "game.cards": "cartes",
       "game.points": "points",
-      
+
       // Textes supplémentaires pour l'écran de jeu
       "game.title": "Jeu Odin",
       "game.loadingGame": "Chargement du jeu...",
       "game.errorLoadingGame": "Erreur de Chargement du Jeu",
-      "game.errorDefault": "Impossible de rejoindre le jeu. La partie n'existe peut-être plus.",
+      "game.errorDefault":
+        "Impossible de rejoindre le jeu. La partie n'existe peut-être plus.",
       "game.errorGeneric": "Erreur",
-      "game.errorPlayerNotFound": "Impossible de trouver vos données de joueur dans la partie.",
+      "game.errorPlayerNotFound":
+        "Impossible de trouver vos données de joueur dans la partie.",
       "game.connectionStatus.connected": "Connecté",
       "game.connectionStatus.connecting": "Connexion en cours...",
       "game.connectionStatus.reconnecting": "Reconnexion en cours...",
       "game.connectionStatus.disconnected": "Déconnecté",
       "game.reconnectingMessage": "Reconnexion...",
-      "game.reconnectingDescription": "Tentative de reconnexion au serveur de jeu.",
-      "game.connectionLost": "Connexion perdue. Les mises à jour du jeu peuvent être retardées.",
+      "game.reconnectingDescription":
+        "Tentative de reconnexion au serveur de jeu.",
+      "game.connectionLost":
+        "Connexion perdue. Les mises à jour du jeu peuvent être retardées.",
       "game.reconnect": "Reconnecter",
       "game.soundToggle.enable": "Activer les sons",
       "game.soundToggle.disable": "Désactiver les sons",
       "game.rules.title": "Règles du Jeu",
-      "game.rules.description": "Jouez des cartes de même couleur ou valeur. Vous pouvez jouer le même nombre OU une carte de plus que le jeu précédent. Une valeur plus élevée bat le jeu précédent. Videz votre main pour gagner !",
+      "game.rules.description":
+        "Jouez des cartes de même couleur ou valeur. Vous pouvez jouer le même nombre OU une carte de plus que le jeu précédent. Une valeur plus élevée bat le jeu précédent. Videz votre main pour gagner !",
       "game.previousPlay": "Jeu Précédent",
       "game.noPreviousPlay": "Pas de jeu précédent",
       "game.dragCards": "Glissez et déposez les cartes ici pour jouer",
       "game.waitingForPlay": "En attente du jeu de l'autre joueur",
       "game.playerTurn": "Tour de {{playerName}}",
-      "game.playHigherValue": "Jouez {{current}} ou {{next}} cartes de valeur supérieure",
-      "game.playAnyCards": "Jouez n'importe quelles cartes de même couleur ou valeur",
+      "game.playHigherValue":
+        "Jouez {{current}} ou {{next}} cartes de valeur supérieure",
+      "game.playAnyCards":
+        "Jouez n'importe quelles cartes de même couleur ou valeur",
       "game.waitingForTurn": "En attente que l'autre joueur prenne son tour",
       "game.yourHand": "Votre Main",
       "game.noCards": "Pas de cartes en main",
@@ -271,46 +310,63 @@ const resources = {
       "game.error.failedStartRound": "Échec du démarrage de la nouvelle manche",
       "game.error.tryAgain": "Veuillez réessayer",
       "game.error.connectionError": "Erreur de Connexion",
-      "game.error.connectionFailed": "Échec de la connexion au serveur de jeu. Veuillez rafraîchir la page.",
+      "game.error.connectionFailed":
+        "Échec de la connexion au serveur de jeu. Veuillez rafraîchir la page.",
       "game.error.notPlayer": "Vous n'êtes pas un joueur dans cette partie",
       "game.error.invalidSelection": "Sélection invalide",
-      "game.error.sameColorOrValue": "Toutes les cartes doivent être de même couleur ou de même valeur",
-      "game.error.notInHand": "Certaines cartes sélectionnées ne sont pas dans votre main",
+      "game.error.sameColorOrValue":
+        "Toutes les cartes doivent être de même couleur ou de même valeur",
+      "game.error.notInHand":
+        "Certaines cartes sélectionnées ne sont pas dans votre main",
       "game.error.noCardsSelected": "Aucune carte sélectionnée",
       "game.error.selectCards": "Sélectionnez une ou plusieurs cartes à jouer",
       "game.leaveConfirm": "Êtes-vous sûr de vouloir quitter la partie ?",
       "game.sessionEnded": "Session de jeu terminée",
-      "game.sessionExpired": "La partie n'a pas été trouvée ou votre session a expiré. Redirection vers l'accueil.",
-      
+      "game.sessionExpired":
+        "La partie n'a pas été trouvée ou votre session a expiré. Redirection vers l'accueil.",
+
       // Langue
-      "language": "Langue",
+      language: "Langue",
       "language.english": "Anglais",
       "language.french": "Français",
-      
+
       // Server error messages
       "error.game.notFound": "Partie introuvable",
       "error.game.alreadyStarted": "La partie a déjà commencé",
       "error.game.notInProgress": "La partie n'est pas en cours",
       "error.game.full": "La partie est complète",
-      "error.game.notEnoughPlayers": "Pas assez de joueurs pour commencer la partie",
-      "error.game.cannotPass": "Vous ne pouvez pas passer quand aucune carte n'a été jouée",
+      "error.game.notEnoughPlayers":
+        "Pas assez de joueurs pour commencer la partie",
+      "error.game.cannotPass":
+        "Vous ne pouvez pas passer quand aucune carte n'a été jouée",
       "error.game.invalidAction": "Action invalide",
-      
+
       "error.player.notFound": "Joueur introuvable",
       "error.player.nameAlreadyTaken": "Ce nom est déjà pris",
       "error.player.notYourTurn": "Ce n'est pas votre tour",
-      
+
       "error.card.notInHand": "La carte n'est pas dans votre main",
       "error.card.notFound": "Carte introuvable",
       "error.card.mustPlayCards": "Vous devez jouer au moins une carte",
-      "error.card.mustPlaySameType": "Toutes les cartes doivent être de la même valeur ou de la même couleur",
-      "error.card.mustPlayHigherValue": "Votre jeu doit avoir une valeur supérieure au jeu actuel",
-      "error.card.mustPlayExactCount": "Vous devez jouer le nombre exact de cartes requis",
-      "error.card.mustPlayFirstCard": "Vous devez jouer exactement une carte au premier tour de la manche",
-      
-      "error.server.internal": "Erreur interne du serveur"
-    }
-  }
+      "error.card.mustPlaySameType":
+        "Toutes les cartes doivent être de la même valeur ou de la même couleur",
+      "error.card.mustPlayHigherValue":
+        "Votre jeu doit avoir une valeur supérieure au jeu actuel",
+      "error.card.mustPlayExactCount":
+        "Vous devez jouer le nombre exact de cartes requis",
+      "error.card.mustPlayFirstCard":
+        "Vous devez jouer exactement une carte au premier tour de la manche",
+
+      "error.server.internal": "Erreur interne du serveur",
+
+      // Bannière de partie en cours
+      home: {
+        activeGame: "Partie en cours",
+        resumeGame: "Reprendre la partie",
+        roomCode: "Code de la salle",
+      },
+    },
+  },
 };
 
 i18n
@@ -319,15 +375,15 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: 'en',
-    debug: process.env.NODE_ENV === 'development',
+    fallbackLng: "en",
+    debug: process.env.NODE_ENV === "development",
     interpolation: {
       escapeValue: false, // not needed for React
     },
     detection: {
-      order: ['localStorage', 'navigator'],
-      caches: ['localStorage'],
+      order: ["localStorage", "navigator"],
+      caches: ["localStorage"],
     },
   });
 
-export default i18n; 
+export default i18n;

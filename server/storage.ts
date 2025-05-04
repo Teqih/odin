@@ -1,18 +1,22 @@
-import { 
-  User, 
-  InsertUser, 
-  GameState, 
-  Player, 
+import {
+  User,
+  InsertUser,
+  GameState,
+  Player,
   Card,
   CardColor,
   CardValue,
   ChatMessage,
-  MessageType
+  MessageType,
 } from "@shared/schema";
 import { nanoid } from "nanoid";
 import { startNewRound as startNewRoundLogic } from "./game"; // Import game logic
 import { GameError } from "./utils/gameError";
 import { ErrorCode } from "./constants/errorCodes";
+
+interface PlayerWithDisconnection extends Player {
+  disconnectedSince?: number;
+}
 
 // Define storage interface with additional methods for game management
 export interface IStorage {
@@ -20,7 +24,7 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  
+
   // Game methods
   createGame(hostName: string, pointLimit: number): Promise<GameState>;
   getGame(gameId: string): Promise<GameState | undefined>;
@@ -29,15 +33,39 @@ export interface IStorage {
   addPlayerToGame(gameId: string, playerName: string): Promise<GameState>;
   startGame(gameId: string): Promise<GameState>;
   startNewRound(gameId: string): Promise<GameState>;
-  playCards(gameId: string, playerId: string, cards: Card[]): Promise<GameState>;
-  pickCard(gameId: string, playerId: string, cardId: string): Promise<GameState>;
+  playCards(
+    gameId: string,
+    playerId: string,
+    cards: Card[]
+  ): Promise<GameState>;
+  pickCard(
+    gameId: string,
+    playerId: string,
+    cardId: string
+  ): Promise<GameState>;
   passTurn(gameId: string, playerId: string): Promise<GameState>;
-  updatePlayerConnection(gameId: string, playerId: string, connected: boolean): Promise<GameState>;
+  updatePlayerConnection(
+    gameId: string,
+    playerId: string,
+    connected: boolean
+  ): Promise<GameState>;
   getAllActiveGames(): Promise<GameState[]>;
-  
+
   // Chat methods
-  saveChatMessage(gameId: string, playerId: string, playerName: string, message: string, messageType?: MessageType, audioUrl?: string, duration?: number): Promise<ChatMessage>;
-  storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer): Promise<string>;
+  saveChatMessage(
+    gameId: string,
+    playerId: string,
+    playerName: string,
+    message: string,
+    messageType?: MessageType,
+    audioUrl?: string,
+    duration?: number
+  ): Promise<ChatMessage>;
+  storeVoiceMessage(
+    gameId: string,
+    playerId: string,
+    audioData: Buffer
+  ): Promise<string>;
   getChatMessages(gameId: string): Promise<ChatMessage[]>;
   clearChatMessages(gameId: string): Promise<void>;
 }
@@ -48,9 +76,9 @@ function calculatePlayValue(cards: Card[]): number {
     return 0;
   }
   const valueString = cards
-    .map(c => c.value)
+    .map((c) => c.value)
     .sort((a, b) => b - a) // Sort descending
-    .join('');
+    .join("");
   return parseInt(valueString, 10);
 }
 
@@ -78,7 +106,7 @@ export class MemStorage implements IStorage {
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
-      (user) => user.username === username,
+      (user) => user.username === username
     );
   }
 
@@ -105,14 +133,16 @@ export class MemStorage implements IStorage {
       id: gameId,
       roomCode,
       status: "waiting",
-      players: [{
-        id: hostId,
-        name: hostName,
-        isHost: true,
-        hand: [],
-        score: 0,
-        connected: true
-      }],
+      players: [
+        {
+          id: hostId,
+          name: hostName,
+          isHost: true,
+          hand: [],
+          score: 0,
+          connected: true,
+        },
+      ],
       deck: [],
       currentTurn: 0,
       currentPlay: [],
@@ -122,9 +152,9 @@ export class MemStorage implements IStorage {
       pointLimit,
       lastAction: {
         type: null,
-        playerId: null
+        playerId: null,
       },
-      passCount: 0
+      passCount: 0,
     };
 
     this.games.set(gameId, gameState);
@@ -147,19 +177,32 @@ export class MemStorage implements IStorage {
     return gameState;
   }
 
-  async addPlayerToGame(gameId: string, playerName: string): Promise<GameState> {
+  async addPlayerToGame(
+    gameId: string,
+    playerName: string
+  ): Promise<GameState> {
     const game = await this.getGame(gameId);
     if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
-    if (game.status !== "waiting") throw new GameError(ErrorCode.GAME_ALREADY_STARTED);
+    if (game.status !== "waiting")
+      throw new GameError(ErrorCode.GAME_ALREADY_STARTED);
     // Suppression de la limite de 6 joueurs
     // Calcul de la valeur maximale basée sur le jeu de cartes - un joueur minimum doit avoir 2 cartes
-    const colors: CardColor[] = ["red", "blue", "green", "yellow", "purple", "orange"];
+    const colors: CardColor[] = [
+      "red",
+      "blue",
+      "green",
+      "yellow",
+      "purple",
+      "orange",
+    ];
     const values: CardValue[] = [1, 2, 3, 4, 5, 6, 7, 8, 9];
     const totalCardsInDeck = colors.length * values.length; // 54 cartes
     const maxPlayersLimit = Math.floor(totalCardsInDeck / 2); // Chaque joueur doit avoir au moins 2 cartes
-    
-    if (game.players.length >= maxPlayersLimit) throw new GameError(ErrorCode.GAME_FULL);
-    if (game.players.some(p => p.name === playerName)) throw new GameError(ErrorCode.NAME_ALREADY_TAKEN);
+
+    if (game.players.length >= maxPlayersLimit)
+      throw new GameError(ErrorCode.GAME_FULL);
+    if (game.players.some((p) => p.name === playerName))
+      throw new GameError(ErrorCode.NAME_ALREADY_TAKEN);
 
     const newPlayer: Player = {
       id: nanoid(),
@@ -167,7 +210,7 @@ export class MemStorage implements IStorage {
       isHost: false,
       hand: [],
       score: 0,
-      connected: true
+      connected: true,
     };
 
     game.players.push(newPlayer);
@@ -177,70 +220,79 @@ export class MemStorage implements IStorage {
   async startGame(gameId: string): Promise<GameState> {
     const game = await this.getGame(gameId);
     if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
-    if (game.players.length < 2) throw new GameError(ErrorCode.NOT_ENOUGH_PLAYERS);
-    if (game.status !== "waiting") throw new GameError(ErrorCode.GAME_ALREADY_STARTED);
+    if (game.players.length < 2)
+      throw new GameError(ErrorCode.NOT_ENOUGH_PLAYERS);
+    if (game.status !== "waiting")
+      throw new GameError(ErrorCode.GAME_ALREADY_STARTED);
 
     // Use the central startNewRound logic to set up the first round
     const startedGame = startNewRoundLogic(game);
-    
+
     // Update status and persist
     startedGame.status = "playing";
     startedGame.gameWinner = null;
     startedGame.lastAction = {
       type: null,
-      playerId: null
+      playerId: null,
     };
-    
+
     return this.updateGame(startedGame);
   }
 
   async startNewRound(gameId: string): Promise<GameState> {
     const game = await this.getGame(gameId);
     if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
-    if (game.status !== "playing") throw new GameError(ErrorCode.GAME_NOT_IN_PROGRESS);
-    
+    if (game.status !== "playing")
+      throw new GameError(ErrorCode.GAME_NOT_IN_PROGRESS);
+
     // Use the imported game logic function
     const updatedGame = startNewRoundLogic(game);
-    
+
     // Persist the updated game state
     return this.updateGame(updatedGame);
   }
 
-  async playCards(gameId: string, playerId: string, cards: Card[]): Promise<GameState> {
+  async playCards(
+    gameId: string,
+    playerId: string,
+    cards: Card[]
+  ): Promise<GameState> {
     const game = await this.getGame(gameId);
     if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
-    if (game.status !== "playing") throw new GameError(ErrorCode.GAME_NOT_IN_PROGRESS);
-    
-    const playerIndex = game.players.findIndex(p => p.id === playerId);
+    if (game.status !== "playing")
+      throw new GameError(ErrorCode.GAME_NOT_IN_PROGRESS);
+
+    const playerIndex = game.players.findIndex((p) => p.id === playerId);
     if (playerIndex === -1) throw new GameError(ErrorCode.PLAYER_NOT_FOUND);
-    
-    if (playerIndex !== game.currentTurn) throw new GameError(ErrorCode.NOT_YOUR_TURN);
-    
+
+    if (playerIndex !== game.currentTurn)
+      throw new GameError(ErrorCode.NOT_YOUR_TURN);
+
     const player = game.players[playerIndex];
-    
+
     // Check if cards array is empty
     if (!cards || cards.length === 0) {
-        throw new GameError(ErrorCode.MUST_PLAY_CARDS);
+      throw new GameError(ErrorCode.MUST_PLAY_CARDS);
     }
-    
+
     // Check if all cards to be played are in player's hand
     for (const card of cards) {
-      if (!player.hand.some(c => c.id === card.id)) {
+      if (!player.hand.some((c) => c.id === card.id)) {
         throw new GameError(ErrorCode.CARD_NOT_IN_HAND);
       }
     }
-    
+
     // Check if the played cards themselves are valid (all same value or all same color)
     const firstCard = cards[0];
     const playedValue = firstCard.value;
     const playedColor = firstCard.color;
-    const allSameValue = cards.every(c => c.value === playedValue);
-    const allSameColor = cards.every(c => c.color === playedColor);
+    const allSameValue = cards.every((c) => c.value === playedValue);
+    const allSameColor = cards.every((c) => c.color === playedColor);
 
     if (!allSameValue && !allSameColor) {
       throw new GameError(ErrorCode.MUST_PLAY_SAME_TYPE);
     }
-    
+
     // === START VALIDATION ===
 
     // Rule: First play of the round must be exactly one card
@@ -251,21 +303,35 @@ export class MemStorage implements IStorage {
     // Validate subsequent plays against the current play
     if (game.currentPlay.length > 0) {
       // Rule: Must play the exact same number OR one more card than the current play
-      if (cards.length !== game.currentPlay.length && cards.length !== game.currentPlay.length + 1) {
-        throw new GameError(ErrorCode.MUST_PLAY_EXACT_COUNT, `Must play ${game.currentPlay.length} or ${game.currentPlay.length + 1} card(s)`);
+      if (
+        cards.length !== game.currentPlay.length &&
+        cards.length !== game.currentPlay.length + 1
+      ) {
+        throw new GameError(
+          ErrorCode.MUST_PLAY_EXACT_COUNT,
+          `Must play ${game.currentPlay.length} or ${
+            game.currentPlay.length + 1
+          } card(s)`
+        );
       }
-      
+
       const currentPlayCards = game.currentPlay;
       const firstCurrentCard = currentPlayCards[0];
-      const currentIsSameValue = currentPlayCards.every(c => c.value === firstCurrentCard.value);
-      const currentIsSameColor = currentPlayCards.every(c => c.color === firstCurrentCard.color);
-      
+      const currentIsSameValue = currentPlayCards.every(
+        (c) => c.value === firstCurrentCard.value
+      );
+      const currentIsSameColor = currentPlayCards.every(
+        (c) => c.color === firstCurrentCard.color
+      );
+
       // CORRECTION: Les cartes jouées doivent être cohérentes (même valeur OU même couleur) entre elles
       // mais n'ont pas besoin de correspondre au type du jeu précédent
       if (!allSameValue && !allSameColor) {
-        throw new Error("All cards played must be the same value or the same color");
+        throw new Error(
+          "All cards played must be the same value or the same color"
+        );
       }
-      
+
       // SUPPRESSION: On retire les vérifications qui exigent que le type de jeu soit préservé
       // La règle n'exige pas que si l'adversaire a joué des cartes de même valeur, je doive aussi jouer des cartes de même valeur
       // Ce qui compte c'est que:
@@ -277,155 +343,184 @@ export class MemStorage implements IStorage {
       // Rule: Played cards must match the value OR color of the current play OR have a higher value
       let matchesValue = false;
       let matchesColor = false;
-      
+
       // Si toutes mes cartes ont la même valeur et au moins une carte du jeu précédent a cette valeur
       if (allSameValue) {
-        matchesValue = currentPlayCards.some(c => c.value === playedValue);
+        matchesValue = currentPlayCards.some((c) => c.value === playedValue);
       }
-      
+
       // Si toutes mes cartes ont la même couleur et au moins une carte du jeu précédent a cette couleur
       if (allSameColor) {
-        matchesColor = currentPlayCards.some(c => c.color === playedColor);
+        matchesColor = currentPlayCards.some((c) => c.color === playedColor);
       }
 
       // Calculer les valeurs combinées pour la comparaison
       const currentPlayValue = calculatePlayValue(currentPlayCards);
       const playedCombinedValue = calculatePlayValue(cards);
 
-      // La règle principale: 
+      // La règle principale:
       // Si mes cartes correspondent par couleur ou valeur, ou si la valeur combinée est supérieure
-      if (!matchesValue && !matchesColor && playedCombinedValue <= currentPlayValue) {
-        throw new GameError(ErrorCode.MUST_PLAY_HIGHER_VALUE, `Your play value (${playedCombinedValue}) must be higher than the current play value (${currentPlayValue}) or match color/value`);
+      if (
+        !matchesValue &&
+        !matchesColor &&
+        playedCombinedValue <= currentPlayValue
+      ) {
+        throw new GameError(
+          ErrorCode.MUST_PLAY_HIGHER_VALUE,
+          `Your play value (${playedCombinedValue}) must be higher than the current play value (${currentPlayValue}) or match color/value`
+        );
       }
 
       // Si les cartes correspondent par couleur ou valeur, elles doivent avoir une valeur strictement supérieure
-      if ((matchesValue || matchesColor) && playedCombinedValue <= currentPlayValue) {
-        throw new GameError(ErrorCode.MUST_PLAY_HIGHER_VALUE, `Even when matching color/value, your play value (${playedCombinedValue}) must be higher than the current play value (${currentPlayValue})`);
+      if (
+        (matchesValue || matchesColor) &&
+        playedCombinedValue <= currentPlayValue
+      ) {
+        throw new GameError(
+          ErrorCode.MUST_PLAY_HIGHER_VALUE,
+          `Even when matching color/value, your play value (${playedCombinedValue}) must be higher than the current play value (${currentPlayValue})`
+        );
       }
-    } 
+    }
     // === END VALIDATION ===
-    
+
     // Sort the played cards by value descending BEFORE storing them
     const sortedPlayedCards = [...cards].sort((a, b) => b.value - a.value);
-    
+
     // Move cards from hand to play area
     game.previousPlay = [...game.currentPlay]; // Keep previous play for potential pick
     game.currentPlay = sortedPlayedCards; // Store sorted cards
-    player.hand = player.hand.filter(c => !sortedPlayedCards.some(card => card.id === c.id));
-    
+    player.hand = player.hand.filter(
+      (c) => !sortedPlayedCards.some((card) => card.id === c.id)
+    );
+
     const requiresPick = game.previousPlay.length > 0;
     let turnAdvanced = false;
-    
+
     // Check if player has emptied their hand (round win)
     if (player.hand.length === 0) {
       game.roundWinner = player.id;
-      
+
       // Update scores for all players
       for (const p of game.players) {
         p.score += p.hand.length;
       }
-      
+
       // Check if any player reached point limit (game win)
-      const highestScore = Math.max(...game.players.map(p => p.score));
+      const highestScore = Math.max(...game.players.map((p) => p.score));
       if (highestScore >= game.pointLimit) {
         game.status = "finished";
         // Winner is the player with the lowest score
-        const lowestScore = Math.min(...game.players.map(p => p.score));
-        game.gameWinner = game.players.find(p => p.score === lowestScore)?.id || null;
+        const lowestScore = Math.min(...game.players.map((p) => p.score));
+        game.gameWinner =
+          game.players.find((p) => p.score === lowestScore)?.id || null;
       }
-      
+
       game.lastAction = {
         type: "round_end",
-        playerId: player.id
+        playerId: player.id,
       };
       // Turn logic is handled by round start/game end
-      
     } else {
       // Player did not win, set up next action/turn
-      
+
       // Update last action (using sorted cards)
       game.lastAction = {
         type: "play",
         playerId: player.id,
-        cards: sortedPlayedCards 
+        cards: sortedPlayedCards,
       };
 
       // If no card pick is required (e.g., first turn), advance turn immediately
       if (!requiresPick) {
-         game.currentTurn = (playerIndex + 1) % game.players.length;
-         turnAdvanced = true;
-      } 
+        game.currentTurn = (playerIndex + 1) % game.players.length;
+        turnAdvanced = true;
+      }
       // Else: Pick is required, turn advances after pickCard is called by the client.
     }
-    
+
     // Reset pass count on any successful play
     game.passCount = 0;
-    
+
     // Auto-pick if there's only one card in the previous play
     if (requiresPick && game.previousPlay.length === 1) {
       const cardToPickId = game.previousPlay[0].id;
-      
+
       // Add the card to player's hand
       player.hand.push(game.previousPlay[0]);
-      
+
       // Clear previous play
       game.previousPlay = [];
-      
+
       // Move to next player's turn
       game.currentTurn = (playerIndex + 1) % game.players.length;
-      
+
       // Update last action
       game.lastAction = {
         type: "pick",
-        playerId: player.id
+        playerId: player.id,
       };
     }
-    
+
     return this.updateGame(game);
   }
 
-  async pickCard(gameId: string, playerId: string, cardId: string): Promise<GameState> {
+  async pickCard(
+    gameId: string,
+    playerId: string,
+    cardId: string
+  ): Promise<GameState> {
     const game = await this.getGame(gameId);
     if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
-    
-    const playerIndex = game.players.findIndex(p => p.id === playerId);
+
+    const playerIndex = game.players.findIndex((p) => p.id === playerId);
     if (playerIndex === -1) throw new GameError(ErrorCode.PLAYER_NOT_FOUND);
-    
-    if (game.lastAction.type !== "play" || game.lastAction.playerId !== playerId) {
-      throw new GameError(ErrorCode.INVALID_ACTION, "You can only pick a card after playing");
+
+    if (
+      game.lastAction.type !== "play" ||
+      game.lastAction.playerId !== playerId
+    ) {
+      throw new GameError(
+        ErrorCode.INVALID_ACTION,
+        "You can only pick a card after playing"
+      );
     }
-    
+
     // Find the card in the previous play
-    const cardIndex = game.previousPlay.findIndex(c => c.id === cardId);
-    if (cardIndex === -1) throw new GameError(ErrorCode.CARD_NOT_FOUND, "Card not found in previous play");
-    
+    const cardIndex = game.previousPlay.findIndex((c) => c.id === cardId);
+    if (cardIndex === -1)
+      throw new GameError(
+        ErrorCode.CARD_NOT_FOUND,
+        "Card not found in previous play"
+      );
+
     const card = game.previousPlay[cardIndex];
     const player = game.players[playerIndex];
-    
+
     // Add the card to player's hand
     player.hand.push(card);
-    
+
     // Remove the card from previous play
-    game.previousPlay = game.previousPlay.filter(c => c.id !== cardId);
-    
+    game.previousPlay = game.previousPlay.filter((c) => c.id !== cardId);
+
     // Add remaining cards to the deck and shuffle
     game.deck = [...game.deck, ...game.previousPlay];
     for (let i = game.deck.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [game.deck[i], game.deck[j]] = [game.deck[j], game.deck[i]];
     }
-    
+
     game.previousPlay = [];
-    
+
     // Move to next player's turn
     game.currentTurn = (game.currentTurn + 1) % game.players.length;
-    
+
     // Update last action
     game.lastAction = {
       type: "pick",
-      playerId: player.id
+      playerId: player.id,
     };
-    
+
     return this.updateGame(game);
   }
 
@@ -433,28 +528,30 @@ export class MemStorage implements IStorage {
     const game = await this.getGame(gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "playing") throw new Error("Game is not in progress");
-    
-    const playerIndex = game.players.findIndex(p => p.id === playerId);
+
+    const playerIndex = game.players.findIndex((p) => p.id === playerId);
     if (playerIndex === -1) throw new Error("Player not found");
-    
+
     if (playerIndex !== game.currentTurn) throw new Error("Not your turn");
 
     // Si aucune carte n'a été jouée (currentPlay est vide), le joueur ne peut pas passer
     if (game.currentPlay.length === 0) {
-      throw new Error("You cannot pass when no cards have been played. You must play a card.");
+      throw new Error(
+        "You cannot pass when no cards have been played. You must play a card."
+      );
     }
-    
+
     // Increment pass count
     game.passCount++;
-    
+
     // Calcul du prochain joueur
     const nextPlayerIndex = (playerIndex + 1) % game.players.length;
 
     // Si le tour revient au joueur qui a posé les dernières cartes (et qu'il y a des cartes)
     const isLastPlayerWhoPlayed =
-        game.lastAction.type === "play" &&
-        game.lastAction.playerId === game.players[nextPlayerIndex].id &&
-        game.currentPlay.length > 0; // Ensure there are cards to clear
+      game.lastAction.type === "play" &&
+      game.lastAction.playerId === game.players[nextPlayerIndex].id &&
+      game.currentPlay.length > 0; // Ensure there are cards to clear
 
     // Condition pour vider le milieu:
     // 1. Le tour revient au dernier joueur qui a joué (et il y a des cartes)
@@ -462,80 +559,125 @@ export class MemStorage implements IStorage {
     if (isLastPlayerWhoPlayed || game.passCount >= game.players.length - 1) {
       // Ajouter les cartes au deck
       game.deck = [...game.deck, ...game.currentPlay, ...game.previousPlay];
-      
+
       // Vider les zones de jeu
       game.currentPlay = [];
       game.previousPlay = [];
-      
+
       // Réinitialiser le compteur de passes
       game.passCount = 0;
-      
+
       // Mettre à jour la dernière action pour indiquer une fin de 'mini-round' ou de manche
       // Le tour du joueur 'nextPlayerIndex' commencera avec une table vide.
       game.lastAction = {
         type: "round_end", // Using round_end signifies the board was cleared
-        playerId: null
+        playerId: null,
       };
 
       // Assigner le tour au joueur qui recommence (celui qui avait posé)
       game.currentTurn = nextPlayerIndex;
-
     } else {
       // Si le board n'est pas vidé, passer simplement au joueur suivant
       game.currentTurn = nextPlayerIndex;
-      
+
       // Mettre à jour la dernière action pour indiquer un 'pass'
       game.lastAction = {
         type: "pass",
-        playerId
+        playerId,
       };
     }
-    
+
     return this.updateGame(game);
   }
 
-  async updatePlayerConnection(gameId: string, playerId: string, connected: boolean): Promise<GameState> {
+  async updatePlayerConnection(
+    gameId: string,
+    playerId: string,
+    connected: boolean
+  ): Promise<GameState> {
     const game = await this.getGame(gameId);
     if (!game) {
-      console.log(`Game ${gameId} not found when updating player ${playerId} connection status`);
+      console.log(
+        `Game ${gameId} not found when updating player ${playerId} connection status`
+      );
       throw new Error("Game not found");
     }
-    
-    const playerIndex = game.players.findIndex(p => p.id === playerId);
+
+    const playerIndex = game.players.findIndex((p) => p.id === playerId);
     if (playerIndex === -1) throw new Error("Player not found");
-    
+
     // Only update if status actually changes
     if (game.players[playerIndex].connected !== connected) {
       game.players[playerIndex].connected = connected;
-      
-      // If the host disconnects, make the next connected player the host
+
+      // Track disconnection time for host reassignment
+      const player = game.players[playerIndex] as PlayerWithDisconnection;
+
+      if (!connected) {
+        player.disconnectedSince = Date.now();
+      } else {
+        // Clear disconnection timestamp on reconnect
+        delete player.disconnectedSince;
+      }
+
+      // If the host disconnects, only reassign after 5 minutes
       if (!connected && game.players[playerIndex].isHost) {
-        const connectedPlayers = game.players.filter(p => p.connected && p.id !== playerId);
+        const connectedPlayers = game.players.filter(
+          (p) => p.connected && p.id !== playerId
+        );
         if (connectedPlayers.length > 0) {
-          game.players[playerIndex].isHost = false;
-          const newHostIndex = game.players.findIndex(p => p.id === connectedPlayers[0].id);
-          if (newHostIndex !== -1) {
-            game.players[newHostIndex].isHost = true;
+          // Check if there are any recently disconnected players
+          const reconnectionWindow = 5 * 60 * 1000; // 5 minutes
+          const now = Date.now();
+          const hasRecentlyDisconnected = game.players.some(
+            (p) =>
+              (p as PlayerWithDisconnection).disconnectedSince &&
+              now - (p as PlayerWithDisconnection).disconnectedSince! <
+                reconnectionWindow
+          );
+
+          if (!hasRecentlyDisconnected) {
+            // Only reassign host if no players are expected to reconnect soon
+            game.players[playerIndex].isHost = false;
+            const newHostIndex = game.players.findIndex(
+              (p) => p.id === connectedPlayers[0].id
+            );
+            if (newHostIndex !== -1) {
+              game.players[newHostIndex].isHost = true;
+            }
           }
         }
       }
-      
+
       return this.updateGame(game);
     }
-    
-    return game; // Return existing game if no change
+
+    return game;
   }
 
   async getAllActiveGames(): Promise<GameState[]> {
-    return Array.from(this.games.values())
-      .filter(game => game.status !== "finished" && game.players.some(p => p.connected));
+    return Array.from(this.games.values()).filter((game) => {
+      if (game.status === "finished") return false;
+
+      // Consider a game active if any player is connected or recently disconnected
+      const now = Date.now();
+      const reconnectionWindow = 24 * 60 * 60 * 1000; // 24 hours
+
+      return game.players.some(
+        (p) =>
+          p.connected ||
+          ((p as PlayerWithDisconnection).disconnectedSince &&
+            now - (p as PlayerWithDisconnection).disconnectedSince! <
+              reconnectionWindow)
+      );
+    });
   }
 
   // Chat methods
   async saveChatMessage(
-    gameId: string, 
-    playerId: string, 
-    playerName: string, 
+    gameId: string,
+    playerId: string,
+    playerName: string,
     message: string,
     messageType: MessageType = "text",
     audioUrl?: string,
@@ -544,7 +686,7 @@ export class MemStorage implements IStorage {
     if (!this.chatMessages.has(gameId)) {
       this.chatMessages.set(gameId, []);
     }
-    
+
     const chatMessage: ChatMessage = {
       id: nanoid(),
       gameId,
@@ -554,24 +696,31 @@ export class MemStorage implements IStorage {
       timestamp: Date.now(),
       messageType,
       audioUrl,
-      duration
+      duration,
     };
-    
+
     this.chatMessages.get(gameId)!.push(chatMessage);
-    
+
     // Limit chat history to last 100 messages
     const gameMessages = this.chatMessages.get(gameId)!;
     if (gameMessages.length > 100) {
-      this.chatMessages.set(gameId, gameMessages.slice(gameMessages.length - 100));
+      this.chatMessages.set(
+        gameId,
+        gameMessages.slice(gameMessages.length - 100)
+      );
     }
-    
+
     return chatMessage;
   }
 
-  async storeVoiceMessage(gameId: string, playerId: string, audioData: Buffer): Promise<string> {
+  async storeVoiceMessage(
+    gameId: string,
+    playerId: string,
+    audioData: Buffer
+  ): Promise<string> {
     const audioId = `voice-${gameId}-${playerId}-${Date.now()}`;
     this.audioMessages.set(audioId, audioData);
-    
+
     // Set a TTL for audio messages (7 days)
     setTimeout(() => {
       if (this.audioMessages.has(audioId)) {
@@ -579,14 +728,14 @@ export class MemStorage implements IStorage {
         console.log(`Deleted expired voice message: ${audioId}`);
       }
     }, 7 * 24 * 60 * 60 * 1000);
-    
+
     return audioId;
   }
 
   async getChatMessages(gameId: string): Promise<ChatMessage[]> {
     return this.chatMessages.get(gameId) || [];
   }
-  
+
   async clearChatMessages(gameId: string): Promise<void> {
     this.chatMessages.delete(gameId);
   }

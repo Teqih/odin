@@ -4,6 +4,8 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { Suspense, lazy } from "react";
+import SessionGuard from "./components/session-guard";
+import { LanguageProvider } from "./lib/LanguageContext";
 
 // Lazy load page components with explicit chunkName
 const NotFound = lazy(() => import(/* webpackChunkName: "notfound" */ "@/pages/not-found"));
@@ -47,8 +49,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router />
-      <Toaster />
+      <LanguageProvider>
+        <SessionGuard>
+          <Router />
+          <Toaster />
+        </SessionGuard>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

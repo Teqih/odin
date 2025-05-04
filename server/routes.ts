@@ -35,6 +35,11 @@ ffmpeg.setFfmpegPath(ffmpegPath!);
 // Set the path for ffprobe
 ffmpeg.setFfprobePath(ffprobePath.path);
 
+// Constants
+const CONNECTION_TIMEOUT = 45000; // 45 seconds
+const HOST_REASSIGN_DELAY = 5 * 60 * 1000; // 5 minutes
+const GAME_CLEANUP_DELAY = 24 * 60 * 60 * 1000; // 24 hours
+
 // Map of connected clients by game ID and player ID
 const connections = new Map<string, Map<string, WebSocket>>();
 // Track last message sent time to detect stale connections
@@ -45,8 +50,6 @@ const lastPlayerActivity = new Map<string, Map<string, number>>();
 let pingInterval: NodeJS.Timeout | null = null;
 // Set up a player activity check interval
 let playerActivityInterval: NodeJS.Timeout | null = null;
-
-const CONNECTION_TIMEOUT = 45000; // 45 seconds of inactivity before considering a player disconnected
 
 // Configure multer for voice message uploads
 const upload = multer({
@@ -129,10 +132,16 @@ async function markPlayerDisconnected(gameId: string, playerId: string) {
     // Get player activity map for this game
     const gameActivity = lastPlayerActivity.get(gameId);
     if (gameActivity) {
-      // Remove the player activity record
-      gameActivity.delete(playerId);
-      if (gameActivity.size === 0) {
-        lastPlayerActivity.delete(gameId);
+      // Keep the activity record for reconnection window
+      const lastActive = gameActivity.get(playerId);
+      if (lastActive) {
+        // Only remove activity if it's been longer than the host reassignment delay
+        if (Date.now() - lastActive > HOST_REASSIGN_DELAY) {
+          gameActivity.delete(playerId);
+          if (gameActivity.size === 0) {
+            lastPlayerActivity.delete(gameId);
+          }
+        }
       }
     }
 
@@ -205,29 +214,51 @@ function setupPlayerActivityCheck() {
   playerActivityInterval = setInterval(async () => {
     const now = Date.now();
 
-    // Check each game for inactive players
+    // Check each game for inactive players and cleanup
     for (const [gameId, playerMap] of Array.from(
       lastPlayerActivity.entries()
     )) {
+      // Get game state to check its status
+      const game = await storage.getGame(gameId);
+      if (!game) {
+        // Clean up activity tracking for non-existent games
+        lastPlayerActivity.delete(gameId);
+        continue;
+      }
+
+      // Check for completely abandoned games
+      const allDisconnected = game.players.every((p) => !p.connected);
+      if (allDisconnected) {
+        const lastActivity = Math.max(...Array.from(playerMap.values()));
+        if (now - lastActivity > GAME_CLEANUP_DELAY) {
+          console.log(
+            `Game ${gameId} has been abandoned for over 24 hours, cleaning up`
+          );
+          // Clean up all game data
+          await storage.clearChatMessages(gameId);
+          connections.delete(gameId);
+          lastPlayerActivity.delete(gameId);
+          continue;
+        }
+      }
+
+      // Check individual player activity
       for (const [playerId, lastActive] of Array.from(playerMap.entries())) {
+        // Don't disconnect players too quickly
         if (now - lastActive > CONNECTION_TIMEOUT) {
           console.log(
             `Player ${playerId} in game ${gameId} inactive for too long, marking as disconnected`
           );
 
-          // Get the player's socket if it exists
           const gameConnections = connections.get(gameId);
           if (gameConnections) {
             const socket = gameConnections.get(playerId);
             if (socket) {
-              // Try to close the socket
               try {
                 socket.terminate();
               } catch (e) {
                 console.error("Error terminating inactive socket:", e);
               }
-
-              // Remove the connection
               gameConnections.delete(playerId);
               lastMessageTime.delete(socket);
             }
@@ -721,10 +752,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ]),
               value: z.union([
                 // Accept strings (for backward compatibility)
-                z.enum(["1", "2", "3", "4", "5", "6", "7", "8", "9"])
+                z
+                  .enum(["1", "2", "3", "4", "5", "6", "7", "8", "9"])
                   .transform((val) => parseInt(val, 10) as CardValue),
                 // Accept numbers directly (matching the schema definition)
-                z.number().int().min(1).max(9) as z.ZodType<CardValue>
+                z.number().int().min(1).max(9) as z.ZodType<CardValue>,
               ]),
             })
           )
@@ -931,23 +963,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           // Ensure file exists and log incoming file info for debugging
           if (!req.file) {
-            return reject(new Error('No file uploaded'));
+            return reject(new Error("No file uploaded"));
           }
 
-          console.log('Incoming audio file:', {
+          console.log("Incoming audio file:", {
             mimetype: req.file.mimetype,
             originalname: req.file.originalname,
-            size: req.file.size
+            size: req.file.size,
           });
 
           ffmpeg(inputStream)
             // Let FFmpeg auto-detect input format
-            .toFormat('mp3')
-            .on('error', (err) => {
-              console.error('FFmpeg error:', err);
+            .toFormat("mp3")
+            .on("error", (err) => {
+              console.error("FFmpeg error:", err);
               reject(err);
             })
-            .on('end', () => resolve(Buffer.concat(chunks)))
+            .on("end", () => resolve(Buffer.concat(chunks)))
             .pipe(
               new Writable({
                 write(chunk, encoding, callback) {
@@ -1119,24 +1151,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Global error handling middleware
   app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     console.error("Error in request:", err);
-    
+
     if (err instanceof GameError) {
       return res.status(400).json({
         success: false,
         error: {
           code: err.code,
-          message: err.message
-        }
+          message: err.message,
+        },
       });
     }
-    
+
     // Handle other errors
     return res.status(500).json({
       success: false,
       error: {
         code: ErrorCode.SERVER_ERROR,
-        message: 'Internal server error'
-      }
+        message: "Internal server error",
+      },
     });
   });
 

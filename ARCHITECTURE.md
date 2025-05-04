@@ -1,6 +1,7 @@
 # Project Architecture Overview
 
-This document outlines the architecture of the OdinCardClash project.
+This document outlines the architecture of the OdinCardClash project. 
+If you find any missing or incorrect information in this document, please update it to ensure accuracy and completeness.
 
 ## Structure
 
