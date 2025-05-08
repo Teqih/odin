@@ -52,6 +52,13 @@ const resources = {
       "join.codeRequired": "Please enter a room code",
       "join.gameFull": "Game is full (maximum 27 players)",
       "join.invalidCode": "Invalid room code or game not found",
+      "join.joinAsSpectator": "Join as Spectator",
+      "join.gameFinishedError": "This game has already finished",
+      "join.spectateTitle": "Join as Spectator?",
+      "join.spectateDescription":
+        "This game is already in progress. Would you like to join as a spectator?",
+      "common.no": "No",
+      "common.yes": "Yes",
 
       // Game screens
       "game.players": "Players",
@@ -87,6 +94,12 @@ const resources = {
       "game.winner": "Winner!",
       "game.cards": "cards",
       "game.points": "points",
+      "game.spectating": "Spectating Mode",
+      "game.playerSpectator": "Spectator",
+      "game.toggleSpectatorMode": "Toggle Spectator Mode",
+      "game.youAreSpectating": "You are spectating",
+      "game.switchToPlayer": "Switch to Player",
+      "game.switchToSpectator": "Switch to Spectator",
 
       // Game screen additional texts
       "game.title": "Odin Game",
@@ -145,7 +158,7 @@ const resources = {
       // Language
       language: "Language",
       "language.english": "English",
-      "language.french": "French",
+      "language.french": "Français",
 
       // Server error messages
       "error.game.notFound": "Game not found",
@@ -230,6 +243,11 @@ const resources = {
       "join.codeRequired": "Veuillez entrer un code de salle",
       "join.gameFull": "La partie est complète (maximum 27 joueurs)",
       "join.invalidCode": "Code de salle invalide ou partie introuvable",
+      "join.joinAsSpectator": "Rejoindre en tant que Spectateur",
+      "join.gameFinishedError": "Cette partie est déjà terminée",
+      "join.spectateTitle": "Rejoindre en tant que spectateur ?",
+      "join.spectateDescription":
+        "Cette partie est déjà en cours. Voulez-vous rejoindre en tant que spectateur ?",
 
       // Écrans de jeu
       "game.players": "Joueurs",
@@ -267,6 +285,12 @@ const resources = {
       "game.winner": "Gagnant !",
       "game.cards": "cartes",
       "game.points": "points",
+      "game.spectating": "En mode Spectateur",
+      "game.playerSpectator": "Spectateur",
+      "game.toggleSpectatorMode": "Basculer le Mode Spectateur",
+      "game.youAreSpectating": "Vous êtes en mode spectateur",
+      "game.switchToPlayer": "Passer en Joueur",
+      "game.switchToSpectator": "Passer en Spectateur",
 
       // Textes supplémentaires pour l'écran de jeu
       "game.title": "Jeu Odin",
@@ -324,10 +348,12 @@ const resources = {
       "game.sessionEnded": "Session de jeu terminée",
       "game.sessionExpired":
         "La partie n'a pas été trouvée ou votre session a expiré. Redirection vers l'accueil.",
+      "common.no": "Non",
+      "common.yes": "Oui",
 
       // Langue
       language: "Langue",
-      "language.english": "Anglais",
+      "language.english": "English",
       "language.french": "Français",
 
       // Server error messages

@@ -23,5 +23,9 @@ export enum ErrorCode {
   // Other errors
   CANNOT_PASS = 'error.game.cannotPass',
   INVALID_ACTION = 'error.game.invalidAction',
-  SERVER_ERROR = 'error.server.internal'
+  SERVER_ERROR = 'error.server.internal',
+  GAME_FINISHED = 'This game has already finished',
+  CANNOT_JOIN_WAITING_AS_SPECTATOR = "Cannot join a waiting game as a spectator",
+  GAME_IN_PROGRESS_SPECTATE_OFFER = "Game in progress, join as spectator?",
+  UNKNOWN_ERROR = "An unknown error occurred"
 }

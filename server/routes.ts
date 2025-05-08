@@ -620,45 +620,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Join an existing game
-  app.post("/api/games/join", async (req: Request, res: Response) => {
+const JoinGameRequestSchema = z.object({
+  playerName: z.string().min(1).max(20),
+  roomCode: z.string().length(6),
+  joinAsSpectator: z.boolean().optional(), // Added for spectator mode
+});
+
+app.post("/api/games/join", async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const joinGameSchema = z.object({
-        playerName: z.string().min(1).max(20),
-        roomCode: z.string().length(6),
-      });
+      const { playerName, roomCode, joinAsSpectator } = JoinGameRequestSchema.parse(req.body);
 
-      const validatedData = joinGameSchema.parse(req.body as JoinGameRequest);
-      const game = await storage.getGameByRoomCode(validatedData.roomCode);
-
+      const game = await storage.getGameByRoomCode(roomCode.toUpperCase());
       if (!game) {
-        return res.status(404).json({ message: "Game not found" });
+        return next(new GameError(ErrorCode.GAME_NOT_FOUND));
       }
 
-      if (game.status !== "waiting") {
-        return res.status(400).json({ message: "Game has already started" });
+      if (game.status === "playing" && !joinAsSpectator) {
+        // Game is in progress, and the player hasn't explicitly asked to join as a spectator.
+        // Return an error indicating they can join as a spectator.
+        return next(new GameError(ErrorCode.GAME_IN_PROGRESS_SPECTATE_OFFER));
+      }
+      
+      if (game.status === "finished") {
+        return next(new GameError(ErrorCode.GAME_FINISHED));
       }
 
-      const updatedGame = await storage.addPlayerToGame(
-        game.id,
-        validatedData.playerName
-      );
-      const newPlayer = updatedGame.players[updatedGame.players.length - 1];
+      const updatedGame = await storage.addPlayerToGame(game.id, playerName, joinAsSpectator);
+      const newPlayer = updatedGame.players.find((p) => p.name === playerName);
 
-      // Broadcast player joined to all clients
-      broadcastGameState(game.id, updatedGame);
+      if (!newPlayer) {
+        // Should not happen if addPlayerToGame was successful
+        return next(new GameError(ErrorCode.PLAYER_NOT_FOUND));
+      }
 
-      res.status(200).json({
-        gameId: game.id,
-        roomCode: game.roomCode,
+      // Broadcast player joined event or spectator joined event
+      broadcastGameState(updatedGame.id, updatedGame);
+
+      const messageType = newPlayer.isSpectator ? "spectator_joined" : "player_joined";
+      const joinedMessage: WebSocketMessage = {
+        type: messageType,
+        gameId: updatedGame.id,
         playerId: newPlayer.id,
+        // Send full game state with player_joined/spectator_joined for initial sync for everyone
+        // The broadcastGameState above already sends filtered state to each player.
+        // This specific message can carry the new player's info if needed, or just be a signal.
+        // Let's send the new player's minimal info for now.
+        chatMessage: { // Re-using chatMessage structure for simplicity to pass player name
+          id: nanoid(),
+          gameId: updatedGame.id,
+          playerId: newPlayer.id,
+          playerName: newPlayer.name,
+          message: newPlayer.isSpectator ? `${newPlayer.name} joined as a spectator.` : `${newPlayer.name} joined the game.`,
+          timestamp: Date.now(),
+          messageType: "text", // Or a new system message type
+        }
+      };
+
+      const gameConnections = connections.get(updatedGame.id);
+      if (gameConnections) {
+        gameConnections.forEach(socket => {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(joinedMessage));
+          }
+        });
+      }
+
+      res.json({
+        gameId: updatedGame.id,
+        playerId: newPlayer.id,
+        gameState: filterGameStateForPlayer(updatedGame, newPlayer.id)
       });
     } catch (error) {
-      console.error("Join game error:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.message });
+      // Handle specific error from storage if player tries to join waiting game as spectator
+      if (error instanceof GameError && error.code === ErrorCode.CANNOT_JOIN_WAITING_AS_SPECTATOR) {
+        return next(error);
       }
-      res.status(500).json({ message: "Failed to join game" });
+      next(error);
     }
   });
 

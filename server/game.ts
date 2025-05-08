@@ -63,6 +63,15 @@ export function dealCards(game: GameState): GameState {
 export function startNewRound(game: GameState): GameState {
   // Create a fresh deck for every new round to avoid duplicate cards
   const updatedGame = { ...game };
+
+  // Transition spectators to active players
+  updatedGame.players = updatedGame.players.map(player => {
+    if (player.isSpectator) {
+      return { ...player, isSpectator: false, hand: [] }; // Reset hand for new round
+    }
+    return player;
+  });
+
   updatedGame.deck = createDeck();
   
   // Deal cards
@@ -183,6 +192,39 @@ export function generateRoomCode(): string {
 }
 
 // Filter game state for a specific player (to hide other players' cards)
+// Find the next active (non-spectator) player
+export function findNextActivePlayer(game: GameState): number {
+  if (game.players.length === 0) return 0;
+
+  let nextTurn = game.currentTurn;
+  let initialTurn = game.currentTurn;
+  let attempts = 0;
+
+  do {
+    nextTurn = (nextTurn + 1) % game.players.length;
+    attempts++;
+    // Break if we've looped through all players and found no active one, or if we found an active one.
+  } while (game.players[nextTurn].isSpectator && attempts <= game.players.length);
+
+  // If all players are spectators, or only one active player who just played,
+  // it might return the current player if they are the only active one, or the next if all are spectators.
+  // This should be handled by game logic (e.g. if passCount leads to round end).
+  if (attempts > game.players.length && game.players.every(p => p.isSpectator)) {
+    console.warn("No active players found to pass turn to. Current turn remains: ", initialTurn);
+    return initialTurn; // Or handle as an error / specific game state
+  }
+  
+  // If after checking all players, we are back to the initial player and they are a spectator,
+  // it means there are no other active players. This case should ideally be handled by round/game end logic.
+  if (game.players[nextTurn].isSpectator && nextTurn === initialTurn) {
+      console.warn("Looped through all players, only spectators or current player is spectator and no other active players.");
+      // This might indicate a state where the round should end if all active players have passed or only spectators remain.
+      // For now, return the next player index, assuming game logic will handle it.
+  }
+
+  return nextTurn;
+}
+
 export function filterGameStateForPlayer(game: GameState, playerId: string): GameState {
   const filteredGame = { ...game };
   

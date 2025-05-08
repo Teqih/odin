@@ -113,9 +113,9 @@ The project includes a complete chat system with text and voice messaging:
 This directory contains code intended to be used by both the client and server.
 
 *   **`schema.ts`**: Defines shared TypeScript interfaces and Zod schemas for:
-    * Game state structures (`GameState`, `Player`, `Card`)
-    * API request/response types
-    * WebSocket message types
+    * Game state structures (`GameState`, `Player` (now includes `isSpectator?: boolean`), `Card`)
+    * API request/response types (e.g., `JoinGameRequest` now includes `joinAsSpectator?: boolean`)
+    * WebSocket message types (including `spectator_joined`)
     * Chat message interfaces with support for both text and voice messages
 
 ## Technology Stack
@@ -162,4 +162,4 @@ When making changes to the OdinCardClash system, consider the following guidelin
 4. **Server Communication**:
    * WebSocket message handlers are in `server/routes.ts`
    * Client-side WebSocket handling is in `client/src/lib/websocket.ts`
-   * Add new message types to `WebSocketMessageType` in `schema.ts` 
+   * Add new message types to `WebSocketMessageType` in `schema.ts`

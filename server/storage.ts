@@ -9,6 +9,7 @@ import {
   ChatMessage,
   MessageType,
 } from "@shared/schema";
+import { findNextActivePlayer } from "./game";
 import { nanoid } from "nanoid";
 import { startNewRound as startNewRoundLogic } from "./game"; // Import game logic
 import { GameError } from "./utils/gameError";
@@ -141,6 +142,7 @@ export class MemStorage implements IStorage {
           hand: [],
           score: 0,
           connected: true,
+          isSpectator: false, // Initialize as not a spectator
         },
       ],
       deck: [],
@@ -179,12 +181,30 @@ export class MemStorage implements IStorage {
 
   async addPlayerToGame(
     gameId: string,
-    playerName: string
+    playerName: string,
+    joinAsSpectator: boolean = false // New parameter to indicate if joining as spectator
   ): Promise<GameState> {
     const game = await this.getGame(gameId);
     if (!game) throw new GameError(ErrorCode.GAME_NOT_FOUND);
-    if (game.status !== "waiting")
+
+    // If game is 'playing' and not explicitly joining as spectator, or if game is 'finished', disallow joining.
+    // Player can only join a 'waiting' game directly, or a 'playing' game if joinAsSpectator is true.
+    if (game.status === "finished") {
+      throw new GameError(ErrorCode.GAME_FINISHED);
+    }
+    if (game.status === "playing" && !joinAsSpectator) {
+      // This case will be handled by the route, asking the user if they want to join as spectator
+      // For now, if the API is called directly without joinAsSpectator for a running game, it's an error.
+      // Or, we can assume the client will pass joinAsSpectator = true after confirmation.
+      // Let's refine this: the route will decide to call this with joinAsSpectator = true.
+      // So, if joinAsSpectator is false and game is playing, it's an attempt to join normally, which is not allowed.
       throw new GameError(ErrorCode.GAME_ALREADY_STARTED);
+    }
+    if (game.status === "waiting" && joinAsSpectator) {
+      // Cannot join a waiting game as a spectator
+      throw new GameError(ErrorCode.CANNOT_JOIN_WAITING_AS_SPECTATOR);
+    }
+
     // Suppression de la limite de 6 joueurs
     // Calcul de la valeur maximale basée sur le jeu de cartes - un joueur minimum doit avoir 2 cartes
     const colors: CardColor[] = [
@@ -211,6 +231,7 @@ export class MemStorage implements IStorage {
       hand: [],
       score: 0,
       connected: true,
+      isSpectator: game.status === "playing" && joinAsSpectator, // Set spectator status
     };
 
     game.players.push(newPlayer);
@@ -433,7 +454,7 @@ export class MemStorage implements IStorage {
 
       // If no card pick is required (e.g., first turn), advance turn immediately
       if (!requiresPick) {
-        game.currentTurn = (playerIndex + 1) % game.players.length;
+        game.currentTurn = findNextActivePlayer(game);
         turnAdvanced = true;
       }
       // Else: Pick is required, turn advances after pickCard is called by the client.
@@ -453,7 +474,7 @@ export class MemStorage implements IStorage {
       game.previousPlay = [];
 
       // Move to next player's turn
-      game.currentTurn = (playerIndex + 1) % game.players.length;
+      game.currentTurn = findNextActivePlayer(game);
 
       // Update last action
       game.lastAction = {
@@ -513,7 +534,7 @@ export class MemStorage implements IStorage {
     game.previousPlay = [];
 
     // Move to next player's turn
-    game.currentTurn = (game.currentTurn + 1) % game.players.length;
+    game.currentTurn = findNextActivePlayer(game);
 
     // Update last action
     game.lastAction = {
@@ -534,7 +555,7 @@ export class MemStorage implements IStorage {
 
     if (playerIndex !== game.currentTurn) throw new Error("Not your turn");
 
-    // Si aucune carte n'a été jouée (currentPlay est vide), le joueur ne peut pas passer
+    // Si aucune carte n\\\'a été jouée (currentPlay est vide), le joueur ne peut pas passer
     if (game.currentPlay.length === 0) {
       throw new Error(
         "You cannot pass when no cards have been played. You must play a card."
@@ -544,19 +565,32 @@ export class MemStorage implements IStorage {
     // Increment pass count
     game.passCount++;
 
-    // Calcul du prochain joueur
-    const nextPlayerIndex = (playerIndex + 1) % game.players.length;
+    // Déterminer le prochain joueur actif potentiel
+    // FIX: The context for findNextActivePlayer should use the current player's index (playerIndex)
+    // game.currentTurn is already playerIndex due to the check above.
+    const gameContextForFindNext = {
+      ...game,
+      currentTurn: playerIndex, // Use the current player's index as the reference for finding the next player
+    };
+    const nextActivePlayerIndex = findNextActivePlayer(gameContextForFindNext);
 
-    // Si le tour revient au joueur qui a posé les dernières cartes (et qu'il y a des cartes)
+    // Si le tour revient au joueur qui a posé les dernières cartes (et qu\\\'il y a des cartes)
     const isLastPlayerWhoPlayed =
       game.lastAction.type === "play" &&
-      game.lastAction.playerId === game.players[nextPlayerIndex].id &&
+      game.lastAction.playerId === game.players[nextActivePlayerIndex].id &&
       game.currentPlay.length > 0; // Ensure there are cards to clear
+
+    // Compter seulement les joueurs actifs pour la condition de nettoyage
+    const activePlayerCount = game.players.filter((p) => !p.isSpectator).length;
 
     // Condition pour vider le milieu:
     // 1. Le tour revient au dernier joueur qui a joué (et il y a des cartes)
-    // 2. OU tout le monde a passé consécutivement
-    if (isLastPlayerWhoPlayed || game.passCount >= game.players.length - 1) {
+    // 2. OU tout le monde (parmi les joueurs actifs) a passé consécutivement (et il y a plus d'un joueur actif)
+    if (
+      (isLastPlayerWhoPlayed ||
+        (game.passCount >= activePlayerCount - 1 && activePlayerCount > 1)) &&
+      game.currentPlay.length > 0
+    ) {
       // Ajouter les cartes au deck
       game.deck = [...game.deck, ...game.currentPlay, ...game.previousPlay];
 
@@ -574,11 +608,13 @@ export class MemStorage implements IStorage {
         playerId: null,
       };
 
-      // Assigner le tour au joueur qui recommence (celui qui avait posé)
-      game.currentTurn = nextPlayerIndex;
+      // Assigner le tour au joueur qui recommence (celui qui avait posé ou le prochain actif si le dernier joueur a quitté/est spectateur)
+      // nextActivePlayerIndex est déjà le bon joueur à qui donner le tour si le board est vidé.
+      game.currentTurn = nextActivePlayerIndex;
     } else {
-      // Si le board n'est pas vidé, passer simplement au joueur suivant
-      game.currentTurn = nextPlayerIndex;
+      // Si le board n\'est pas vidé, passer simplement au joueur suivant
+      // nextActivePlayerIndex est le prochain joueur actif à qui passer le tour.
+      game.currentTurn = nextActivePlayerIndex;
 
       // Mettre à jour la dernière action pour indiquer un 'pass'
       game.lastAction = {

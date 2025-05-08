@@ -82,7 +82,7 @@ const LobbyScreen: React.FC = () => {
     const removeHandler = addMessageHandler((message: WebSocketMessage) => {
       if (message.type === "game_started" && message.gameId === gameId) {
         navigate(`/game/${gameId}`);
-      } else if (message.type === "player_joined" && message.gameId === gameId) {
+      } else if ((message.type === "player_joined" || message.type === "spectator_joined") && message.gameId === gameId) { // Handle spectator_joined
         queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}?playerId=${encodeURIComponent(playerId)}`] });
       }
     });
@@ -191,9 +191,10 @@ const LobbyScreen: React.FC = () => {
                     <span>
                       {player.name}
                       {player.id === playerId && ` (${t('game.playerYou')})`}
+                      {player.isSpectator && ` (${t('game.spectator')})`} {/* Display Spectator label */}
                     </span>
                   </div>
-                  {player.isHost && (
+                  {player.isHost && !player.isSpectator && ( /* Host cannot be spectator */
                     <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded-full">
                       {t('game.playerHost')}
                     </span>

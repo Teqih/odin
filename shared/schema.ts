@@ -34,6 +34,7 @@ export interface Player {
   hand: Card[];
   score: number;
   connected: boolean;
+  isSpectator?: boolean; // Added for spectator mode
 }
 
 export interface GameState {
@@ -65,6 +66,7 @@ export interface CreateGameRequest {
 export interface JoinGameRequest {
   playerName: string;
   roomCode: string;
+  joinAsSpectator?: boolean; // Optional: true if joining an ongoing game as spectator
 }
 
 export interface PlayCardsRequest {
@@ -103,7 +105,8 @@ export type WebSocketMessageType =
   | "chat_message"
   | "chat_history"
   | "voice_message"
-  | "voice_message_received";
+  | "voice_message_received"
+  | "spectator_joined"; // Added for spectator joining
 
 // Message type enum
 export type MessageType = "text" | "voice";
